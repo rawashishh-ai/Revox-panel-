@@ -239,7 +239,7 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
                   {/* Blurred placeholder text (REAL KEY IS NEVER SENT TO FRONTEND BEFORE PAYMENT) */}
                   <div className="relative py-2 px-3 bg-[#050505] border border-[#4c1d95] rounded overflow-hidden flex items-center justify-center">
                     <span className="text-lg font-mono-code font-bold tracking-widest text-[#c084fc] blur-[5px] select-none pointer-events-none opacity-60">
-                      SLTX-VIP9-4920-PHAN
+                      RVX-VIP9-4920-PHAN
                     </span>
 
                     {/* Lock Overlay */}
@@ -406,7 +406,7 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
                 <span className={`text-lg font-mono-code font-bold tracking-widest text-white transition-all duration-700 ${
                   revealStage >= 3 ? 'blur-0 opacity-100 drop-shadow-[0_0_10px_#00D9A0]' : 'blur-[8px] opacity-40'
                 }`}>
-                  {revealedKey || 'SLTX-XXXX-XXXX-XXXX'}
+                  {revealedKey || 'RVX-XXXX-XXXX-XXXX'}
                 </span>
               </div>
 

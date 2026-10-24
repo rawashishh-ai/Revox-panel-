@@ -15,19 +15,23 @@ import { GetKeyModal } from './components/GetKeyModal';
 import { IntroVideoScreen } from './components/IntroVideoScreen';
 import { db, testConnection } from './firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
+import { getOrCreateDeviceId } from './deviceId';
 
-const CACHED_SETTINGS_STORAGE_KEY = 'sltx_published_settings_v3';
+const CACHED_SETTINGS_STORAGE_KEY = 'rvx_published_settings_v3';
 
 export default function App() {
   const [lang, setLang] = useState<Language>('EN');
   const [unlockedKeyData, setUnlockedKeyData] = useState<VerificationResult['data'] | null>(() => {
     try {
-      const stored = localStorage.getItem('sltx_activated_key');
+      const stored =
+        localStorage.getItem('rvx_activated_key') ||
+        localStorage.getItem('sltx_activated_key');
       if (stored) {
         const parsed = JSON.parse(stored);
         if (!parsed.expiresAt || new Date(parsed.expiresAt).getTime() > Date.now()) {
           return parsed;
         } else {
+          localStorage.removeItem('rvx_activated_key');
           localStorage.removeItem('sltx_activated_key');
         }
       }
@@ -35,8 +39,18 @@ export default function App() {
     return null;
   });
 
-  // Show Panel Gameplay Video intro screen first when user visits the website
-  const [hasPassedIntro, setHasPassedIntro] = useState<boolean>(false);
+  // Remember if user has already passed intro or is already unlocked
+  const [hasPassedIntro, setHasPassedIntro] = useState<boolean>(() => {
+    try {
+      const storedKey =
+        localStorage.getItem('rvx_activated_key') ||
+        localStorage.getItem('sltx_activated_key');
+      if (storedKey) return true;
+      return localStorage.getItem('rvx_has_passed_intro') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [manualGameplayView, setManualGameplayView] = useState<boolean>(false);
 
   const [adminOpen, setAdminOpen] = useState(false);
@@ -204,7 +218,7 @@ export default function App() {
       path === '/admin/' ||
       hash === '#admin'
     ) {
-      setIntroCompleted(true);
+      setHasPassedIntro(true);
       setAdminOpen(true);
     }
 
@@ -268,6 +282,7 @@ export default function App() {
         setUnlockedKeyData(prev => {
           if (prev && payload.key && prev.key.toUpperCase() === String(payload.key).toUpperCase()) {
             try {
+              localStorage.removeItem('rvx_activated_key');
               localStorage.removeItem('sltx_activated_key');
             } catch {}
             return null;
@@ -283,7 +298,9 @@ export default function App() {
         setUnlockedKeyData(prev => {
           if (prev && payload.key && prev.key.toUpperCase() === String(payload.key).toUpperCase()) {
             try {
+              localStorage.removeItem('rvx_activated_key');
               localStorage.removeItem('sltx_activated_key');
+              localStorage.removeItem(`rvx_session_token_${prev.key.toUpperCase()}`);
               localStorage.removeItem(`sltx_session_token_${prev.key.toUpperCase()}`);
             } catch {}
             return null;
@@ -300,6 +317,7 @@ export default function App() {
           if (prev && payload.key && prev.key.toUpperCase() === String(payload.key).toUpperCase()) {
             if (payload.status === 'revoked' || payload.status === 'expired') {
               try {
+                localStorage.removeItem('rvx_activated_key');
                 localStorage.removeItem('sltx_activated_key');
               } catch {}
               return null;
@@ -310,6 +328,7 @@ export default function App() {
               expiresAt: payload.expiresAt !== undefined ? payload.expiresAt : prev.expiresAt
             };
             try {
+              localStorage.setItem('rvx_activated_key', JSON.stringify(next));
               localStorage.setItem('sltx_activated_key', JSON.stringify(next));
             } catch {}
             return next;
@@ -332,9 +351,10 @@ export default function App() {
 
     const validateActiveSession = async () => {
       try {
-        const deviceId = localStorage.getItem('sltx_device_id') || '';
+        const deviceId = getOrCreateDeviceId();
         const sessionToken =
           unlockedKeyData.sessionToken ||
+          localStorage.getItem(`rvx_session_token_${unlockedKeyData.key.toUpperCase()}`) ||
           localStorage.getItem(`sltx_session_token_${unlockedKeyData.key.toUpperCase()}`) ||
           '';
         const res = await fetch('/api/session/validate', {
@@ -347,26 +367,55 @@ export default function App() {
           })
         });
         if (cancelled) return;
+
         if (res.status === 403 || res.status === 400) {
-          localStorage.removeItem('sltx_activated_key');
-          setUnlockedKeyData(null);
-          return;
+          const errData = await res.json().catch(() => null);
+          // Only invalidate session if key was explicitly expired, revoked, deleted, or closed
+          if (
+            errData &&
+            (errData.reason === 'expired' ||
+              errData.reason === 'revoked' ||
+              errData.reason === 'deleted' ||
+              errData.reason === 'logged_out')
+          ) {
+            localStorage.removeItem('rvx_activated_key');
+            localStorage.removeItem('sltx_activated_key');
+            setUnlockedKeyData(null);
+            return;
+          }
         }
-        const data = await res.json();
-        if (data.valid && data.data) {
-          setUnlockedKeyData(prev => {
-            if (!prev) return null;
-            if (prev.expiresAt !== data.data.expiresAt || prev.status !== data.data.status) {
-              const updated = { ...prev, ...data.data };
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.valid && data.data) {
+            if (data.data.sessionToken) {
               try {
-                localStorage.setItem('sltx_activated_key', JSON.stringify(updated));
+                localStorage.setItem(`rvx_session_token_${unlockedKeyData.key.toUpperCase()}`, data.data.sessionToken);
+                localStorage.setItem(`sltx_session_token_${unlockedKeyData.key.toUpperCase()}`, data.data.sessionToken);
               } catch {}
-              return updated;
             }
-            return prev;
-          });
+            setUnlockedKeyData(prev => {
+              if (!prev) return null;
+              if (
+                prev.expiresAt !== data.data.expiresAt ||
+                prev.status !== data.data.status ||
+                !prev.sessionToken
+              ) {
+                const updated = { ...prev, ...data.data };
+                try {
+                  localStorage.setItem('rvx_activated_key', JSON.stringify(updated));
+                  localStorage.setItem('sltx_activated_key', JSON.stringify(updated));
+                } catch {}
+                return updated;
+              }
+              return prev;
+            });
+          }
         }
-      } catch {}
+      } catch (err) {
+        // Network drops should NOT clear the key session immediately
+        console.warn('Session validate network catch:', err);
+      }
     };
 
     validateActiveSession();
@@ -405,7 +454,7 @@ export default function App() {
   // Fallback object if offline on very first boot after timeout
   const activeSettings: SiteSettings = settings || {
     logoUrl: '/assets/revox-logo.png',
-    logoSize: 155,
+    logoSize: 290,
     logoPositionY: 0,
     websiteTitle: 'REVOX PANEL',
     panelName: 'REVOX PANEL',
@@ -508,6 +557,9 @@ export default function App() {
               settings={activeSettings}
               lang={lang}
               onContinue={() => {
+                try {
+                  localStorage.setItem('rvx_has_passed_intro', 'true');
+                } catch {}
                 setHasPassedIntro(true);
                 setManualGameplayView(false);
               }}
@@ -522,15 +574,17 @@ export default function App() {
               onDisconnect={() => {
                 const keyToLock = unlockedKeyData?.key;
                 try {
-                  const deviceId = localStorage.getItem('sltx_device_id') || '';
+                  const deviceId = getOrCreateDeviceId();
                   if (keyToLock) {
                     fetch('/api/session/logout', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ key: keyToLock, deviceId })
                     }).catch(() => {});
+                    localStorage.removeItem(`rvx_session_token_${keyToLock.toUpperCase()}`);
                     localStorage.removeItem(`sltx_session_token_${keyToLock.toUpperCase()}`);
                   }
+                  localStorage.removeItem('rvx_activated_key');
                   localStorage.removeItem('sltx_activated_key');
                 } catch {}
                 setUnlockedKeyData(null);
@@ -556,7 +610,9 @@ export default function App() {
               }}
               onVerified={(data) => {
                 try {
+                  localStorage.setItem('rvx_activated_key', JSON.stringify(data));
                   localStorage.setItem('sltx_activated_key', JSON.stringify(data));
+                  localStorage.setItem('rvx_has_passed_intro', 'true');
                 } catch {}
                 setUnlockedKeyData(data);
               }}

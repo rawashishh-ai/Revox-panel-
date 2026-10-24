@@ -142,7 +142,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [panelName, setPanelName] = useState(
     currentSettings.panelName || currentSettings.websiteTitle || 'REVOX PANEL'
   );
-  const [logoSize, setLogoSize] = useState(currentSettings.logoSize || 155);
+  const [logoSize, setLogoSize] = useState(
+    currentSettings.logoSize && currentSettings.logoSize >= 240 ? currentSettings.logoSize : 290
+  );
   const [logoPositionY, setLogoPositionY] = useState(currentSettings.logoPositionY || 0);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [logoUrlInput, setLogoUrlInput] = useState(
@@ -197,7 +199,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   useEffect(() => {
     setPanelName(currentSettings.panelName || currentSettings.websiteTitle || 'REVOX PANEL');
-    setLogoSize(currentSettings.logoSize || 155);
+    setLogoSize(
+      currentSettings.logoSize && currentSettings.logoSize >= 240 ? currentSettings.logoSize : 290
+    );
     setLogoPositionY(currentSettings.logoPositionY || 0);
     setAnnTitle(currentSettings.announcementTitle || "WE'RE MOVING");
     setAnnFrom(currentSettings.announcementFrom || 'SILENTX');
@@ -1504,7 +1508,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       <input
                         type="range"
                         min={80}
-                        max={240}
+                        max={380}
                         value={logoSize}
                         onChange={e => setLogoSize(Number(e.target.value))}
                         className="w-full accent-[#8B5CF6]"

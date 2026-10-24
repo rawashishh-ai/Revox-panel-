@@ -1,7 +1,7 @@
 {
   "logoStoragePath": "/assets/default-logo.png",
   "logoUrl": "/assets/revox-logo.png",
-  "logoSize": 165,
+  "logoSize": 290,
   "logoPositionY": 0,
   "websiteTitle": "REVOX PANEL",
   "panelName": "REVOX PANEL",
@@ -33,7 +33,7 @@
     "keySalesEnabled": true,
     "keyPriceINR": 199,
     "keySaleDurationDays": 30,
-    "introVideoUrl": "/api/public/video/gameplay_v6_1792777695697",
+    "introVideoUrl": "",
     "introVideoEnabled": true,
     "introVideoTitle": "PANEL GAMEPLAY PREVIEW",
     "introVideoButtonText": "CONTINUE",
@@ -46,14 +46,14 @@
   },
   "downloadHackUrl": "https://www.mediafire.com/file/fjyc9omx56r777v/M1NX_VIP.apk/file",
   "setupVideoUrl": "https://youtu.be/lWQJCX7U_3U?si=4pRzgMXvVYgR5IUT",
-  "introVideoUrl": "/api/public/video/gameplay_v6_1792777695697",
+  "introVideoUrl": "",
   "introVideoEnabled": true,
   "introVideoTitle": "PANEL GAMEPLAY PREVIEW",
   "introVideoButtonText": "CONTINUE",
   "keySalesEnabled": true,
   "keyPriceINR": 199,
   "keySaleDurationDays": 30,
-  "updatedAt": "2026-10-24T04:43:36.486Z",
-  "updatedBy": "admin",
-  "version": 8
+  "updatedAt": "2026-10-24T07:17:30.000Z",
+  "updatedBy": "Admin (Verified)",
+  "version": 10
 }

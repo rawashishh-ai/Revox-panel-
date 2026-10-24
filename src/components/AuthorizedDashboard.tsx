@@ -9,7 +9,8 @@ interface AuthorizedDashboardProps {
 }
 
 export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyData, settings, onDisconnect }) => {
-  const storageKey = `sltx_connected_key_${keyData.key}`;
+  const storageKey = `rvx_connected_key_${keyData.key}`;
+  const legacyStorageKey = `sltx_connected_key_${keyData.key}`;
 
   const [connecting, setConnecting] = useState(false);
   const [connectStage, setConnectStage] = useState<1 | 2 | 3 | 4 | 5>(1);
@@ -19,7 +20,10 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
   // Persistent connected state: stays true until key expires
   const [connected, setConnected] = useState<boolean>(() => {
     try {
-      return localStorage.getItem(storageKey) === 'true';
+      return (
+        localStorage.getItem(storageKey) === 'true' ||
+        localStorage.getItem(legacyStorageKey) === 'true'
+      );
     } catch {}
     return false;
   });

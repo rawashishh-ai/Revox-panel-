@@ -418,7 +418,7 @@ function normalizeSettings(raw: Partial<SiteSettings>): SiteSettings {
   return {
     logoStoragePath: raw.logoStoragePath || '',
     logoUrl: raw.logoUrl !== undefined && raw.logoUrl !== '' ? raw.logoUrl : '/assets/revox-logo.png',
-    logoSize: typeof raw.logoSize === 'number' ? raw.logoSize : 155,
+    logoSize: typeof raw.logoSize === 'number' && raw.logoSize >= 240 ? raw.logoSize : 290,
     logoPositionY: typeof raw.logoPositionY === 'number' ? raw.logoPositionY : 0,
     websiteTitle: resolvedWebsiteTitle,
     panelName: resolvedPanelName,
@@ -496,12 +496,14 @@ async function hydrateFromFirestore() {
 
     if (chosenDoc) {
       const hydrated = normalizeSettings(chosenDoc as Partial<SiteSettings>);
+      if (!canonicalDoc || (Number(canonicalDoc.version) || 0) < hydrated.version || Number(chosenDoc.logoSize) < 240) {
+        hydrated.version = Math.max(hydrated.version, (Number(chosenDoc.version) || 0) + 1);
+        hydrated.updatedAt = new Date().toISOString();
+        await firestoreSetDoc('websiteSettings', 'main', hydrated);
+        await firestoreSetDoc('settings', 'site', hydrated);
+      }
       memorySettings = hydrated;
       fs.writeFileSync(settingsFile, JSON.stringify(hydrated, null, 2), 'utf-8');
-      // Ensure canonical websiteSettings/main has the latest migrated document
-      if (!canonicalDoc || (Number(canonicalDoc.version) || 0) < hydrated.version) {
-        await firestoreSetDoc('websiteSettings', 'main', hydrated);
-      }
       broadcastSSE('settings-update', hydrated);
     } else {
       // Only if Firestore has NO settings document at all, seed initial document once from local file
@@ -517,7 +519,11 @@ async function hydrateFromFirestore() {
       'SLTX-VIP7-4920-PHAN',
       'SLTX-PRO9-8821-ELIT',
       'SLTX-9K4X7M-8P2Q5W-3R9N6V-4T8J2F',
-      'SLTX-7W3Q9Z-5M8K2P-6X4R9T-8N3V7C'
+      'SLTX-7W3Q9Z-5M8K2P-6X4R9T-8N3V7C',
+      'RVX-TEST-KEY1-FREE',
+      'RVX-2026-LIVE-FAST',
+      'RVX-VIP7-4920-PHAN',
+      'RVX-PRO9-8821-ELIT'
     ]);
     const remoteKeys = await firestoreListDocs('accessKeys', 500);
     const localKeys = getKeysFromDisk();
@@ -744,9 +750,9 @@ function recordAdminLog(entry: Omit<AdminAuditLog, 'id' | 'timestamp'>): AdminAu
   return fullEntry;
 }
 
-// Generate a cryptographically random access key in the format SLTX-9KTY-YT5E-67TQ (3 blocks of 4 random uppercase alphanumeric chars)
-function generateHardCryptographicKey(prefix = 'SLTX'): string {
-  const cleanPrefix = (prefix || 'SLTX').trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || 'SLTX';
+// Generate a cryptographically random access key in the format RVX-9KTY-YT5E-67TQ (3 blocks of 4 random uppercase alphanumeric chars)
+function generateHardCryptographicKey(prefix = 'RVX'): string {
+  const cleanPrefix = (prefix || 'RVX').trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || 'RVX';
   const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
   const digits = '23456789';
   const allChars = letters + digits;
@@ -778,9 +784,9 @@ function assignKeyToOrder(order: PaymentOrder): { order: PaymentOrder; keyStr: s
   const settings = getSettings();
   const durationDays = settings.keySaleDurationDays || 30;
 
-  let keyStr = generateHardCryptographicKey('SLTX');
+  let keyStr = generateHardCryptographicKey('RVX');
   while (keys.some(k => k.key === keyStr)) {
-    keyStr = generateHardCryptographicKey('SLTX');
+    keyStr = generateHardCryptographicKey('RVX');
   }
 
   const assignedKeyDoc: AccessKey = {
@@ -922,11 +928,11 @@ app.post('/api/verify-key', async (req: Request, res: Response) => {
   }
 
   if (!keyDoc) {
-    return res.status(403).json({ valid: false, message: 'Invalid Access Key' });
+    return res.status(404).json({ valid: false, reason: 'not_found', message: 'Invalid Access Key' });
   }
 
   if (keyDoc.status === 'revoked') {
-    return res.status(403).json({ valid: false, message: 'Access Key has been revoked' });
+    return res.status(403).json({ valid: false, reason: 'revoked', message: 'Access Key has been revoked' });
   }
 
   const now = Date.now();
@@ -935,55 +941,76 @@ app.post('/api/verify-key', async (req: Request, res: Response) => {
   if (keyDoc.expiresAt && new Date(keyDoc.expiresAt).getTime() <= now) {
     keyDoc.status = 'expired';
     saveKeys(keys, keyDoc);
-    return res.status(403).json({ valid: false, message: 'Access Key has expired' });
+    return res.status(403).json({ valid: false, reason: 'expired', message: 'Access Key has expired' });
   }
 
-  // Enforce Strict 1-Device & 1-Time Activation Lock:
-  // Once a key has been activated/used (activeSessionToken or boundDeviceId exists),
-  // it can NEVER be opened again via the login form (even on the same device or after logout),
-  // unless an Admin explicitly resets its session lock in the Admin Panel.
-  if (keyDoc.activeSessionToken || keyDoc.boundDeviceId) {
+  // If key was explicitly closed via user logout, it is permanently locked
+  if (keyDoc.activeSessionToken && keyDoc.activeSessionToken.startsWith('LOCKED_LOGGED_OUT_')) {
     return res.status(403).json({
       valid: false,
+      reason: 'logged_out',
       message: 'Access Key already used'
     });
   }
 
-  // Activate key on first use and permanently bind to this single device & session
-  const isFirstActivation = !keyDoc.activatedAt;
-  if (isFirstActivation) {
-    keyDoc.activatedAt = new Date(now).toISOString();
-  }
+  // Enforce Strict 1-Device Locking:
+  // If key is already bound to a device:
+  if (keyDoc.boundDeviceId) {
+    // If entered from a DIFFERENT device:
+    if (deviceId && keyDoc.boundDeviceId !== deviceId) {
+      return res.status(403).json({
+        valid: false,
+        reason: 'device_locked',
+        message: 'Access Key already used'
+      });
+    }
 
-  keyDoc.boundDeviceId = deviceId || `DEV-BOUND-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
-  keyDoc.activeSessionToken = `sess_${crypto.randomBytes(20).toString('hex')}`;
-  keyDoc.lastVerifiedAt = new Date(now).toISOString();
-  keyDoc.updatedAt = new Date(now).toISOString();
+    // If entered from the SAME device that originally activated it:
+    // Restore and maintain active session on this authorized device!
+    keyDoc.lastVerifiedAt = new Date(now).toISOString();
+    if (!keyDoc.activeSessionToken) {
+      keyDoc.activeSessionToken = `sess_${crypto.randomBytes(20).toString('hex')}`;
+    }
+    keyDoc.updatedAt = new Date(now).toISOString();
+    saveKeys(keys, keyDoc);
+    await firestoreSetDoc('accessKeys', keyDoc.id, keyDoc);
+  } else {
+    // Brand new first activation: bind permanently to this 1 device
+    const isFirstActivation = !keyDoc.activatedAt;
+    if (isFirstActivation) {
+      keyDoc.activatedAt = new Date(now).toISOString();
+    }
 
-  // Compute expiration supporting minutes, hours, or days (timer starts ONLY on first activation)
-  const computedDurationMs = keyDoc.durationMs
-    ? Number(keyDoc.durationMs)
-    : keyDoc.durationDays > 0
-      ? keyDoc.durationDays * 24 * 60 * 60 * 1000
-      : 0;
+    keyDoc.boundDeviceId = deviceId || `DEV-BOUND-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
+    keyDoc.activeSessionToken = `sess_${crypto.randomBytes(20).toString('hex')}`;
+    keyDoc.lastVerifiedAt = new Date(now).toISOString();
+    keyDoc.updatedAt = new Date(now).toISOString();
 
-  if (computedDurationMs > 0 && !keyDoc.expiresAt) {
-    const expiresMs = now + computedDurationMs;
-    keyDoc.expiresAt = new Date(expiresMs).toISOString();
-  }
+    // Compute expiration supporting minutes, hours, or days (timer starts ONLY on first activation)
+    const computedDurationMs = keyDoc.durationMs
+      ? Number(keyDoc.durationMs)
+      : keyDoc.durationDays > 0
+        ? keyDoc.durationDays * 24 * 60 * 60 * 1000
+        : 0;
 
-  saveKeys(keys, keyDoc);
-  await firestoreSetDoc('accessKeys', keyDoc.id, keyDoc);
+    if (computedDurationMs > 0 && !keyDoc.expiresAt) {
+      const expiresMs = now + computedDurationMs;
+      keyDoc.expiresAt = new Date(expiresMs).toISOString();
+    }
 
-  if (isFirstActivation) {
-    recordAdminLog({
-      action: 'KEY_ACTIVATED',
-      label: 'Key activated',
-      customerName: keyDoc.customerName || 'Customer',
-      maskedKey: maskKeyForAudit(keyDoc.key, false),
-      keyId: keyDoc.id,
-      details: `First activation by ${keyDoc.customerName || 'Customer'}`
-    });
+    saveKeys(keys, keyDoc);
+    await firestoreSetDoc('accessKeys', keyDoc.id, keyDoc);
+
+    if (isFirstActivation) {
+      recordAdminLog({
+        action: 'KEY_ACTIVATED',
+        label: 'Key activated',
+        customerName: keyDoc.customerName || 'Customer',
+        maskedKey: maskKeyForAudit(keyDoc.key, false),
+        keyId: keyDoc.id,
+        details: `First activation by ${keyDoc.customerName || 'Customer'}`
+      });
+    }
   }
 
   let remainingMs = null;
@@ -1018,7 +1045,7 @@ app.post('/api/session/validate', (req: Request, res: Response) => {
   const sessionToken = typeof req.body?.sessionToken === 'string' ? req.body.sessionToken.trim() : '';
 
   if (!rawKey) {
-    return res.status(400).json({ valid: false, reason: 'invalid' });
+    return res.status(400).json({ valid: false, reason: 'invalid', message: 'Invalid Access Key' });
   }
 
   const keys = getKeys();
@@ -1048,10 +1075,16 @@ app.post('/api/session/validate', (req: Request, res: Response) => {
     return res.status(403).json({ valid: false, reason: 'logged_out', message: 'Access Key session was closed on logout' });
   }
 
+  // 1-Device check: If bound to a device, different devices are locked out
+  if (keyDoc.boundDeviceId && deviceId && keyDoc.boundDeviceId !== deviceId) {
+    return res.status(403).json({ valid: false, reason: 'device_locked', message: 'Access Key is active on another device' });
+  }
+
+  // Token check: If token is provided and differs, allow if device matches
   const tokenMatches = Boolean(keyDoc.activeSessionToken && sessionToken && keyDoc.activeSessionToken === sessionToken);
   const deviceMatches = Boolean(keyDoc.boundDeviceId && deviceId && keyDoc.boundDeviceId === deviceId);
 
-  if (!tokenMatches || !deviceMatches) {
+  if (keyDoc.activeSessionToken && sessionToken && !tokenMatches && !deviceMatches) {
     return res.status(403).json({ valid: false, reason: 'locked', message: 'Access Key is active on another session' });
   }
 

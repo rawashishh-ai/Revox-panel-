@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Language, VerificationResult } from '../types';
 import { translations } from '../translations';
 import { VerificationOverlay, VerificationState } from './VerificationOverlay';
+import { getOrCreateDeviceId } from '../deviceId';
 
 interface AccessKeyFormProps {
   lang: Language;
@@ -9,26 +10,6 @@ interface AccessKeyFormProps {
   onOpenGetKey?: () => void;
   onOpenAdmin?: () => void;
   onVerified: (keyData: NonNullable<VerificationResult['data']>) => void;
-}
-
-function getOrCreateDeviceId(): string {
-  const storageKey = 'sltx_device_id';
-  try {
-    let existing = localStorage.getItem(storageKey);
-    if (existing && existing.length >= 10) {
-      return existing;
-    }
-    const randomPart = Math.random().toString(36).substring(2, 10).toUpperCase() +
-      Date.now().toString(36).toUpperCase();
-    const screenPart = typeof window !== 'undefined'
-      ? `${window.screen?.width || 0}x${window.screen?.height || 0}`
-      : '0x0';
-    const newId = `DEV-${randomPart}-${screenPart}`;
-    localStorage.setItem(storageKey, newId);
-    return newId;
-  } catch {
-    return `DEV-FALLBACK-${navigator.userAgent.length}`;
-  }
 }
 
 export const AccessKeyForm: React.FC<AccessKeyFormProps> = ({
@@ -123,42 +104,79 @@ export const AccessKeyForm: React.FC<AccessKeyFormProps> = ({
 
     try {
       const deviceId = getOrCreateDeviceId();
-      const storedSessionToken = localStorage.getItem(`sltx_session_token_${cleanKey}`) || '';
+      const storedSessionToken =
+        localStorage.getItem(`rvx_session_token_${cleanKey}`) ||
+        localStorage.getItem(`sltx_session_token_${cleanKey}`) ||
+        '';
       const response = await fetch('/api/verify-key', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: cleanKey, deviceId, sessionToken: storedSessionToken })
       });
 
-      const resData = await response.json();
+      let resData: any = null;
+      try {
+        resData = await response.json();
+      } catch {
+        resData = null;
+      }
 
       // Ensure scanning animation has at least 800ms of visual time for cinematic feel
       await new Promise(r => setTimeout(r, 800));
 
-      if (response.ok && resData.valid && resData.data) {
+      if (response.ok && resData && resData.valid && resData.data) {
         if (resData.data.sessionToken) {
           try {
+            localStorage.setItem(`rvx_session_token_${cleanKey}`, resData.data.sessionToken);
             localStorage.setItem(`sltx_session_token_${cleanKey}`, resData.data.sessionToken);
           } catch {}
         }
         setPendingKeyData(resData.data);
         setVerifyState('success');
       } else {
-        const msg = resData.message === 'Access Key has expired' 
-          ? 'ACCESS KEY EXPIRED' 
-          : resData.message === 'Access Key has been revoked' 
-            ? 'ACCESS KEY REVOKED' 
-            : resData.message === 'Access Key already used' || resData.message === 'Access Key is locked to another device'
-              ? 'KEY ALREADY USED (1-TIME ONLY)'
-              : 'INVALID ACCESS KEY';
+        // Detailed server reason mapping so users see real problem instead of generic error
+        const rawMsg = String(resData?.message || '').toLowerCase();
+        const rawReason = String(resData?.reason || '').toLowerCase();
+
+        let msg = 'INVALID ACCESS KEY';
+        if (rawMsg.includes('expired') || rawReason === 'expired') {
+          msg = 'KEY EXPIRED';
+        } else if (
+          rawMsg.includes('already used') ||
+          rawMsg.includes('locked') ||
+          rawMsg.includes('device') ||
+          rawReason === 'device_locked' ||
+          rawReason === 'locked' ||
+          rawReason === 'logged_out'
+        ) {
+          msg = 'KEY ALREADY USED';
+        } else if (
+          rawMsg.includes('revoked') ||
+          rawMsg.includes('deactivated') ||
+          rawReason === 'revoked'
+        ) {
+          msg = 'KEY DEACTIVATED';
+        } else if (
+          rawMsg.includes('invalid') ||
+          rawMsg.includes('not found') ||
+          rawReason === 'not_found' ||
+          rawReason === 'invalid' ||
+          response.status === 404
+        ) {
+          msg = 'INVALID KEY';
+        } else if (resData?.message) {
+          msg = String(resData.message).toUpperCase();
+        }
+
         setOverlayError(msg);
         setErrorMessage(msg);
         setVerifyState('error');
       }
-    } catch {
+    } catch (networkErr) {
+      console.warn('Network verify error:', networkErr);
       await new Promise(r => setTimeout(r, 600));
-      setOverlayError('VERIFICATION FAILED');
-      setErrorMessage('Server connection error');
+      setOverlayError('SERVER CONNECTION ERROR');
+      setErrorMessage('Server connection error. Check your internet.');
       setVerifyState('error');
     }
   };
@@ -228,7 +246,7 @@ export const AccessKeyForm: React.FC<AccessKeyFormProps> = ({
                 setKeyInput(e.target.value.toUpperCase());
                 if (errorMessage) setErrorMessage(null);
               }}
-              placeholder="SLTX-XXXX-XXXX-XXXX"
+              placeholder="RVX-XXXX-XXXX-XXXX"
               autoComplete="off"
               spellCheck="false"
               className="w-full bg-transparent text-white placeholder-[#454552] text-sm sm:text-[15px] font-mono-code font-bold tracking-widest py-1.5 outline-none min-w-0"
