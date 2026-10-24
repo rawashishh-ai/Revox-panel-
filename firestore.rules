@@ -1,0 +1,174 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email == 'rawashishh@gmail.com' && request.auth.token.email_verified == true) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidWebsiteSettings(data) {
+      return data.announcementTitle is string && data.announcementTitle.size() <= 100 &&
+             data.announcementFrom is string && data.announcementFrom.size() <= 60 &&
+             data.announcementTo is string && data.announcementTo.size() <= 60 &&
+             data.whatsappUrl is string && data.whatsappUrl.size() <= 300 &&
+             (!('websiteTitle' in data) || (data.websiteTitle is string && data.websiteTitle.size() <= 120)) &&
+             (!('panelName' in data) || (data.panelName is string && data.panelName.size() <= 120)) &&
+             (!('announcementText' in data) || (data.announcementText is string && data.announcementText.size() <= 2000)) &&
+             (!('announcementBody' in data) || (data.announcementBody is string && data.announcementBody.size() <= 1000)) &&
+             (!('announcementLines' in data) || (data.announcementLines is list && data.announcementLines.size() <= 30)) &&
+             (!('introFeaturePoints' in data) || (data.introFeaturePoints is list && data.introFeaturePoints.size() <= 30)) &&
+             (!('whatsappNumber' in data) || (data.whatsappNumber is string && data.whatsappNumber.size() <= 100)) &&
+             (!('themeColor' in data) || (data.themeColor is string && data.themeColor.size() <= 32)) &&
+             (!('downloadHackUrl' in data) || (data.downloadHackUrl is string && data.downloadHackUrl.size() <= 500)) &&
+             (!('setupVideoUrl' in data) || (data.setupVideoUrl is string && data.setupVideoUrl.size() <= 500)) &&
+             (!('introVideoUrl' in data) || (data.introVideoUrl is string && data.introVideoUrl.size() <= 2000)) &&
+             (!('introVideoEnabled' in data) || (data.introVideoEnabled is bool)) &&
+             (!('introVideoTitle' in data) || (data.introVideoTitle is string && data.introVideoTitle.size() <= 150)) &&
+             (!('introVideoButtonText' in data) || (data.introVideoButtonText is string && data.introVideoButtonText is string && data.introVideoButtonText.size() <= 80)) &&
+             (!('logoStoragePath' in data) || (data.logoStoragePath is string && data.logoStoragePath.size() <= 500)) &&
+             (!('logoUrl' in data) || (data.logoUrl is string && data.logoUrl.size() <= 950000)) &&
+             (!('logoSize' in data) || (data.logoSize is number && data.logoSize >= 40 && data.logoSize <= 600)) &&
+             (!('logoPositionY' in data) || (data.logoPositionY is number && data.logoPositionY >= -200 && data.logoPositionY <= 200)) &&
+             (!('version' in data) || (data.version is number && data.version >= 1));
+    }
+
+    function isValidLogoAsset(data) {
+      return data.assetId is string && data.assetId.size() <= 128 &&
+             data.dataUrl is string && data.dataUrl.size() <= 950000 &&
+             data.version is number &&
+             data.createdAt is string && data.createdAt.size() <= 64;
+    }
+
+    function isValidVideoAsset(data) {
+      return data.videoId is string && data.videoId.size() <= 128 &&
+             data.totalChunks is number && data.totalChunks >= 1 && data.totalChunks <= 70 &&
+             data.version is number &&
+             data.createdAt is string && data.createdAt.size() <= 64;
+    }
+
+    function isValidVideoAssetChunk(data) {
+      return data.videoId is string && data.videoId.size() <= 128 &&
+             data.chunkIndex is number && data.chunkIndex >= 0 && data.chunkIndex <= 70 &&
+             data.data is string && data.data.size() <= 950000;
+    }
+
+    function isValidAccessKey(data) {
+      return data.key is string && data.key.size() <= 64 &&
+             data.status in ['active', 'revoked', 'expired'] &&
+             data.durationDays is number &&
+             data.createdAt is string && data.createdAt.size() <= 64 &&
+             (!('customerName' in data) || (data.customerName is string && data.customerName.size() <= 120)) &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 200));
+    }
+
+    function isValidAdminAuditLog(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.action is string && data.action.size() <= 64 &&
+             data.label is string && data.label.size() <= 100 &&
+             data.timestamp is string && data.timestamp.size() <= 64 &&
+             (!('customerName' in data) || (data.customerName is string && data.customerName.size() <= 120)) &&
+             (!('maskedKey' in data) || (data.maskedKey is string && data.maskedKey.size() <= 64)) &&
+             (!('details' in data) || (data.details is string && data.details.size() <= 300));
+    }
+
+    function isValidPaymentOrder(data) {
+      return data.orderId is string && data.orderId.size() <= 128 &&
+             data.amount is number &&
+             data.currency is string && data.currency.size() <= 16 &&
+             data.paymentStatus in ['PENDING', 'SUCCESS', 'FAILED', 'CANCELLED'] &&
+             data.purchasedAt is string && data.purchasedAt.size() <= 64;
+    }
+
+    // Canonical Website Settings: websiteSettings/main
+    match /websiteSettings/{docId} {
+      allow get: if isValidId(docId);
+      allow write: if isValidId(docId) && (isAdmin() || isValidWebsiteSettings(incoming()));
+    }
+
+    // Legacy mirror: settings/site
+    match /settings/{settingId} {
+      allow get: if isValidId(settingId);
+      allow write: if isValidId(settingId) && (isAdmin() || isValidWebsiteSettings(incoming()));
+    }
+
+    // Permanent versioned logo assets
+    match /logoAssets/{assetId} {
+      allow get: if isValidId(assetId);
+      allow write: if isValidId(assetId) && (isAdmin() || isValidLogoAsset(incoming()));
+    }
+
+    // Permanent versioned gameplay video metadata & chunks
+    match /videoAssets/{videoId} {
+      allow get: if isValidId(videoId);
+      allow write: if isValidId(videoId) && (isAdmin() || isValidVideoAsset(incoming()));
+    }
+
+    match /videoAssetChunks/{chunkId} {
+      allow get: if isValidId(chunkId);
+      allow write: if isValidId(chunkId) && (isAdmin() || isValidVideoAssetChunk(incoming()));
+    }
+
+    // Authoritative Access Keys collection (synced with backend REST API)
+    match /accessKeys/{keyId} {
+      allow get: if isValidId(keyId);
+      allow list: if resource.data.status in ['active', 'revoked', 'expired'];
+      allow write: if isValidId(keyId) && (isAdmin() || isValidAccessKey(incoming()));
+      allow delete: if isValidId(keyId);
+    }
+
+    // Legacy keys collection
+    match /keys/{keyId} {
+      allow get: if isValidId(keyId);
+      allow list: if resource.data.status in ['active', 'revoked', 'expired'];
+      allow write: if isValidId(keyId) && (isAdmin() || isValidAccessKey(incoming()));
+      allow delete: if isValidId(keyId);
+    }
+
+    // Persistent Admin Audit Logs collection
+    match /adminLogs/{logId} {
+      allow get: if isValidId(logId);
+      allow list: if resource.data.timestamp is string;
+      allow write: if isValidId(logId) && (isAdmin() || isValidAdminAuditLog(incoming()));
+    }
+
+    // Authoritative Key Sales / Payment orders collection
+    match /keySales/{orderId} {
+      allow get: if isValidId(orderId);
+      allow list: if resource.data.paymentStatus in ['PENDING', 'SUCCESS', 'FAILED', 'CANCELLED'];
+      allow write: if isValidId(orderId) && (isAdmin() || isValidPaymentOrder(incoming()));
+    }
+
+    // Legacy sales collection
+    match /sales/{orderId} {
+      allow get: if isValidId(orderId);
+      allow list: if resource.data.paymentStatus in ['PENDING', 'SUCCESS', 'FAILED', 'CANCELLED'];
+      allow write: if isValidId(orderId) && (isAdmin() || isValidPaymentOrder(incoming()));
+    }
+
+    // Admin identities
+    match /admins/{adminId} {
+      allow read: if isValidId(adminId) && isSignedIn() && (request.auth.uid == adminId || isAdmin());
+      allow write: if isValidId(adminId) && isAdmin();
+    }
+  }
+}

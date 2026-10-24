@@ -1,0 +1,7 @@
+{
+  "name": "SILENTX // PHANTOM Key Portal",
+  "description": "Pixel-perfect gaming key access portal and management for SILENTX to Phantom migration with real-time verification, dynamic logo management, and secure admin panel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

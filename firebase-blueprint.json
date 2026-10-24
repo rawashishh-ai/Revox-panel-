@@ -1,0 +1,433 @@
+{
+  "entities": {
+    "WebsiteSettings": {
+      "title": "WebsiteSettings",
+      "description": "Canonical authoritative website configuration stored at websiteSettings/main",
+      "type": "object",
+      "properties": {
+        "logoStoragePath": {
+          "type": "string",
+          "description": "Permanent storage path or versioned asset path for the logo",
+          "maxLength": 500
+        },
+        "logoUrl": {
+          "type": "string",
+          "description": "Versioned URL or optimized data URL for the center logo image",
+          "maxLength": 900000
+        },
+        "logoSize": {
+          "type": "number",
+          "description": "Display size of the logo in pixels"
+        },
+        "logoPositionY": {
+          "type": "number",
+          "description": "Vertical offset adjustment for the logo in pixels"
+        },
+        "websiteTitle": {
+          "type": "string",
+          "description": "Public website title",
+          "maxLength": 120
+        },
+        "panelName": {
+          "type": "string",
+          "description": "Global panel brand name displayed across the entire website",
+          "maxLength": 120
+        },
+        "announcementTitle": {
+          "type": "string",
+          "description": "Announcement card small top header",
+          "maxLength": 100
+        },
+        "announcementFrom": {
+          "type": "string",
+          "description": "Old product name in announcement",
+          "maxLength": 60
+        },
+        "announcementTo": {
+          "type": "string",
+          "description": "New product name in announcement",
+          "maxLength": 60
+        },
+        "announcementText": {
+          "type": "string",
+          "description": "Combined announcement text",
+          "maxLength": 2000
+        },
+        "announcementBody": {
+          "type": "string",
+          "description": "Announcement description text",
+          "maxLength": 1000
+        },
+        "whatsappNumber": {
+          "type": "string",
+          "description": "WhatsApp contact number or identifier",
+          "maxLength": 100
+        },
+        "whatsappUrl": {
+          "type": "string",
+          "description": "WhatsApp contact or group link",
+          "maxLength": 300
+        },
+        "themeColor": {
+          "type": "string",
+          "description": "Primary theme color hex",
+          "maxLength": 32
+        },
+        "downloadHackUrl": {
+          "type": "string",
+          "description": "Download panel destination URL",
+          "maxLength": 500
+        },
+        "setupVideoUrl": {
+          "type": "string",
+          "description": "Setup video tutorial URL",
+          "maxLength": 500
+        },
+        "introVideoUrl": {
+          "type": "string",
+          "description": "16:9 Panel gameplay video URL or uploaded path shown on initial website entry",
+          "maxLength": 2000
+        },
+        "introVideoEnabled": {
+          "type": "boolean",
+          "description": "Whether the 16:9 intro gameplay video splash screen is enabled"
+        },
+        "introVideoTitle": {
+          "type": "string",
+          "description": "Heading displayed above the 16:9 intro gameplay video",
+          "maxLength": 150
+        },
+        "introVideoButtonText": {
+          "type": "string",
+          "description": "Label for the Continue button below the 16:9 gameplay video",
+          "maxLength": 80
+        },
+        "introFeaturePoints": {
+          "type": "array",
+          "description": "List of panel feature bullet points shown on the Gameplay Preview page",
+          "items": {
+            "type": "string",
+            "maxLength": 250
+          }
+        },
+        "keySalesEnabled": {
+          "type": "boolean",
+          "description": "Whether instant key sales are enabled"
+        },
+        "keyPriceINR": {
+          "type": "number",
+          "description": "Price of one key in INR"
+        },
+        "keySaleDurationDays": {
+          "type": "number",
+          "description": "Validity in days for purchased keys"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last confirmed update",
+          "maxLength": 64
+        },
+        "updatedBy": {
+          "type": "string",
+          "description": "Identifier of admin who saved this version",
+          "maxLength": 128
+        },
+        "version": {
+          "type": "number",
+          "description": "Monotonically increasing integer version number"
+        }
+      },
+      "required": ["announcementTitle", "announcementFrom", "announcementTo", "whatsappUrl", "updatedAt", "version"]
+    },
+    "LogoAsset": {
+      "title": "LogoAsset",
+      "description": "Immutable versioned logo image stored in Firestore",
+      "type": "object",
+      "properties": {
+        "assetId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "dataUrl": {
+          "type": "string",
+          "maxLength": 950000
+        },
+        "mimeType": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "version": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 64
+        }
+      },
+      "required": ["assetId", "dataUrl", "version", "createdAt"]
+    },
+    "AccessKey": {
+      "title": "AccessKey",
+      "description": "Cryptographic access key with customer name, 1-session binding, and custom duration",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "key": {
+          "type": "string",
+          "description": "The formatted access key string (e.g. RVX-XXXX-XXXX-XXXX)",
+          "maxLength": 64,
+          "pattern": "^[A-Z0-9\\-]+$"
+        },
+        "customerName": {
+          "type": "string",
+          "description": "Customer or reseller name for whom the key was generated",
+          "maxLength": 120
+        },
+        "status": {
+          "type": "string",
+          "description": "Status of the key",
+          "enum": ["active", "revoked", "expired"]
+        },
+        "durationDays": {
+          "type": "number",
+          "description": "Validity period in days once activated (0 for lifetime)"
+        },
+        "durationUnit": {
+          "type": "string",
+          "enum": ["minutes", "hours", "days", "lifetime"]
+        },
+        "durationValue": {
+          "type": "number"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "activatedAt": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "expiresAt": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "boundDeviceId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "activeSessionToken": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "lastVerifiedAt": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "renewedAt": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": ["key", "status", "durationDays", "createdAt"]
+    },
+    "AdminAuditLog": {
+      "title": "AdminAuditLog",
+      "description": "Persistent audit log of admin key actions without exposing deleted secret keys",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "action": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "customerName": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "maskedKey": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "keyId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "details": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "timestamp": {
+          "type": "string",
+          "maxLength": 64
+        }
+      },
+      "required": ["id", "action", "label", "timestamp"]
+    },
+    "PaymentOrder": {
+      "title": "PaymentOrder",
+      "description": "Verified key purchase transaction order",
+      "type": "object",
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "amount": {
+          "type": "number"
+        },
+        "currency": {
+          "type": "string",
+          "maxLength": 16
+        },
+        "paymentStatus": {
+          "type": "string",
+          "enum": ["PENDING", "SUCCESS", "FAILED", "CANCELLED"]
+        },
+        "purchasedAt": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "assignedKey": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "keyDeliveryStatus": {
+          "type": "string",
+          "enum": ["PENDING", "DELIVERED"]
+        }
+      },
+      "required": ["orderId", "amount", "currency", "paymentStatus", "purchasedAt"]
+    },
+    "AdminUser": {
+      "title": "AdminUser",
+      "description": "Authorized administrator record for role validation",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "superadmin"]
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 64
+        }
+      },
+      "required": ["email", "role"]
+    },
+    "VideoAsset": {
+      "title": "VideoAsset",
+      "description": "Persistent versioned gameplay video metadata stored in Firestore",
+      "type": "object",
+      "properties": {
+        "videoId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "fileName": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "mimeType": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "totalChunks": {
+          "type": "number"
+        },
+        "sizeBytes": {
+          "type": "number"
+        },
+        "version": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 64
+        }
+      },
+      "required": ["videoId", "totalChunks", "version", "createdAt"]
+    },
+    "VideoAssetChunk": {
+      "title": "VideoAssetChunk",
+      "description": "Base64 chunk of an uploaded gameplay video stored in Firestore",
+      "type": "object",
+      "properties": {
+        "videoId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "chunkIndex": {
+          "type": "number"
+        },
+        "data": {
+          "type": "string",
+          "maxLength": 950000
+        }
+      },
+      "required": ["videoId", "chunkIndex", "data"]
+    }
+  },
+  "firestore": {
+    "/websiteSettings/{docId}": {
+      "schema": "WebsiteSettings",
+      "description": "Canonical authoritative website configuration (websiteSettings/main)"
+    },
+    "/settings/{settingId}": {
+      "schema": "WebsiteSettings",
+      "description": "Legacy mirror of website configuration (settings/site)"
+    },
+    "/logoAssets/{assetId}": {
+      "schema": "LogoAsset",
+      "description": "Permanent versioned logo assets"
+    },
+    "/videoAssets/{videoId}": {
+      "schema": "VideoAsset",
+      "description": "Permanent versioned gameplay video metadata"
+    },
+    "/videoAssetChunks/{chunkId}": {
+      "schema": "VideoAssetChunk",
+      "description": "Permanent chunked gameplay video data"
+    },
+    "/accessKeys/{keyId}": {
+      "schema": "AccessKey",
+      "description": "Authoritative user access keys collection"
+    },
+    "/keys/{keyId}": {
+      "schema": "AccessKey",
+      "description": "Legacy access keys collection"
+    },
+    "/keySales/{orderId}": {
+      "schema": "PaymentOrder",
+      "description": "Authoritative payment orders collection"
+    },
+    "/admins/{adminId}": {
+      "schema": "AdminUser",
+      "description": "Registered admin identities"
+    },
+    "/adminLogs/{logId}": {
+      "schema": "AdminAuditLog",
+      "description": "Persistent audit log of key management actions"
+    }
+  }
+}

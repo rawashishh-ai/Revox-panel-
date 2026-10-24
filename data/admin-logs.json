@@ -1,0 +1,62 @@
+[
+  {
+    "action": "KEY_DELETED",
+    "label": "Key deleted",
+    "customerName": "Rahul",
+    "maskedKey": "RVX-9TPM-••••-V4WX",
+    "keyId": "key_1792815548267_154be49b",
+    "details": "Deleted access key for Rahul",
+    "id": "log_1792815548603_99736d",
+    "timestamp": "2026-10-24T04:19:08.603Z"
+  },
+  {
+    "action": "KEY_RENEWED",
+    "label": "Key renewed",
+    "customerName": "Rahul",
+    "maskedKey": "RVX-9TPM-5ZSA-V4WX",
+    "keyId": "key_1792815548267_154be49b",
+    "details": "Extended by +10 DAYS for Rahul",
+    "id": "log_1792815548563_8bdc02",
+    "timestamp": "2026-10-24T04:19:08.563Z"
+  },
+  {
+    "action": "KEY_REACTIVATED",
+    "label": "Key activated",
+    "customerName": "Rahul",
+    "maskedKey": "RVX-9TPM-5ZSA-V4WX",
+    "keyId": "key_1792815548267_154be49b",
+    "details": "Reactivated key for Rahul",
+    "id": "log_1792815548531_e4a1d6",
+    "timestamp": "2026-10-24T04:19:08.531Z"
+  },
+  {
+    "action": "KEY_DEACTIVATED",
+    "label": "Key deactivated",
+    "customerName": "Rahul",
+    "maskedKey": "RVX-9TPM-5ZSA-V4WX",
+    "keyId": "key_1792815548267_154be49b",
+    "details": "Deactivated key for Rahul",
+    "id": "log_1792815548501_ea7aba",
+    "timestamp": "2026-10-24T04:19:08.501Z"
+  },
+  {
+    "action": "KEY_ACTIVATED",
+    "label": "Key activated",
+    "customerName": "Rahul",
+    "maskedKey": "RVX-9TPM-5ZSA-V4WX",
+    "keyId": "key_1792815548267_154be49b",
+    "details": "First activation by Rahul",
+    "id": "log_1792815548328_bb7483",
+    "timestamp": "2026-10-24T04:19:08.328Z"
+  },
+  {
+    "action": "KEY_GENERATED",
+    "label": "Key generated",
+    "customerName": "Rahul",
+    "maskedKey": "RVX-9TPM-5ZSA-V4WX",
+    "keyId": "key_1792815548267_154be49b",
+    "details": "30 DAYS for Rahul",
+    "id": "log_1792815548316_d5cbc9",
+    "timestamp": "2026-10-24T04:19:08.316Z"
+  }
+]
