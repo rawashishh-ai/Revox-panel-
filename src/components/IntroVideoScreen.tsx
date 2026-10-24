@@ -254,6 +254,7 @@ interface IntroVideoScreenProps {
   settings: SiteSettings;
   lang: Language;
   onContinue: () => void;
+  onBuyKeyOnline?: () => void;
 }
 
 const DEFAULT_FEATURE_POINTS = [
@@ -265,7 +266,8 @@ const DEFAULT_FEATURE_POINTS = [
 
 export const IntroVideoScreen: React.FC<IntroVideoScreenProps> = ({
   settings,
-  onContinue
+  onContinue,
+  onBuyKeyOnline
 }) => {
   // Prefer introVideoUrl if configured, otherwise fallback to setupVideoUrl if it's a valid custom video URL
   const activeVideoUrl =
@@ -378,9 +380,49 @@ export const IntroVideoScreen: React.FC<IntroVideoScreenProps> = ({
       </div>
 
       {/* ========================================================
-          4. PREMIUM CONTINUE BUTTON (Anchored at Very Bottom)
+          4. ACTION BUTTONS: GET KEY ONLINE (DIRECT BUY) + CONTINUE
           ======================================================== */}
-      <section className="animate-gp-cta w-full mt-auto pt-2">
+      <section className="animate-gp-cta w-full mt-auto pt-2 space-y-2">
+        {/* DIRECT ONLINE BUY KEY BUTTON (No WhatsApp redirect, Instant 1-Device Lock Key) */}
+        <div className="relative group/buy">
+          {/* Ambient Purple Glow */}
+          <div className="absolute -inset-[1.5px] bg-gradient-to-r from-[#9333ea]/50 via-[#c084fc]/60 to-[#a855f7]/50 rounded-[4px] blur-[8px] opacity-75 group-hover/buy:opacity-100 transition-opacity pointer-events-none" />
+
+          {/* Glowing Chamfered Border */}
+          <div className="relative p-[1.5px] bg-gradient-to-r from-[#9333ea] via-[#c084fc] to-[#7e22ce] clip-continue-br shadow-[0_0_20px_rgba(168,85,247,0.55),0_0_35px_rgba(147,51,234,0.35)] transition-transform duration-150 group-hover/buy:scale-[1.01] active:scale-[0.99]">
+            <button
+              type="button"
+              onClick={onBuyKeyOnline}
+              className="relative w-full py-2.5 sm:py-3 px-3.5 sm:px-4 clip-continue-br bg-[#0d0917] hover:bg-[#160d26] active:bg-[#080510] text-[#FFFFFF] font-tech font-black text-[15px] sm:text-[16px] tracking-[0.16em] uppercase cursor-pointer transition-all duration-150 flex items-center justify-between gap-2 overflow-hidden"
+            >
+              {/* Top subtle highlight */}
+              <span className="absolute top-0 left-3 right-3 h-[1px] bg-gradient-to-r from-transparent via-[#c084fc]/60 to-transparent pointer-events-none" />
+
+              {/* Left Side: Golden Key Emblem & Details */}
+              <div className="relative z-10 flex items-center gap-2.5">
+                <span className="flex items-center justify-center w-7 h-7 rounded-[4px] bg-[#3b1261]/80 border border-[#a855f7]/80 text-[#fbbf24] text-sm drop-shadow-[0_0_6px_rgba(251,191,36,0.6)] shrink-0">
+                  🔑
+                </span>
+                <div className="flex flex-col items-start leading-none text-left">
+                  <span className="text-white font-tech font-black tracking-widest text-[13.5px] sm:text-[14.5px] drop-shadow-[0_0_10px_rgba(192,132,252,0.6)]">
+                    GET KEY ONLINE
+                  </span>
+                  <span className="text-[#a7f3d0] font-mono-code font-bold text-[9px] tracking-wider uppercase mt-0.5">
+                    ⚡ 1-DEVICE LOCK • ₹{settings.keyPriceINR || 199}
+                  </span>
+                </div>
+              </div>
+
+              {/* Right Side: Online Action Badge */}
+              <div className="relative z-10 flex items-center gap-1.5 bg-[#581c87]/70 border border-[#a855f7]/80 px-2.5 py-1 rounded-[3px] text-[#e9d5ff] text-[10px] sm:text-[10.5px] font-extrabold tracking-wider font-tech uppercase shadow-[0_0_8px_rgba(168,85,247,0.4)] shrink-0">
+                <span className="text-[#a7f3d0] font-mono-code font-bold">BUY NOW</span>
+                <span className="text-[#c084fc] font-bold">→</span>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        {/* CONTINUE BUTTON */}
         <div className="p-[1px] bg-gradient-to-r from-[#B84DFF] via-[#A020F0] to-[#B84DFF] clip-continue-br shadow-[0_8px_28px_-4px_rgba(160,32,240,0.55)]">
           <button
             type="button"

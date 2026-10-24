@@ -300,6 +300,73 @@ async function firestoreListDocs(collectionName: string, pageSize = 300): Promis
   const info = getFirestoreBaseUrl();
   if (!info) return [];
   try {
+    let whereFilter: any = undefined;
+    if (collectionName === 'accessKeys' || collectionName === 'keys') {
+      whereFilter = {
+        fieldFilter: {
+          field: { fieldPath: 'status' },
+          op: 'IN',
+          value: {
+            arrayValue: {
+              values: [
+                { stringValue: 'active' },
+                { stringValue: 'revoked' },
+                { stringValue: 'expired' }
+              ]
+            }
+          }
+        }
+      };
+    } else if (collectionName === 'keySales' || collectionName === 'sales') {
+      whereFilter = {
+        fieldFilter: {
+          field: { fieldPath: 'paymentStatus' },
+          op: 'IN',
+          value: {
+            arrayValue: {
+              values: [
+                { stringValue: 'PENDING' },
+                { stringValue: 'SUCCESS' },
+                { stringValue: 'FAILED' },
+                { stringValue: 'CANCELLED' }
+              ]
+            }
+          }
+        }
+      };
+    }
+
+    if (whereFilter) {
+      const queryUrl = `${info.baseUrl}:runQuery?key=${info.apiKey}`;
+      const res = await fetch(queryUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          structuredQuery: {
+            from: [{ collectionId: collectionName }],
+            where: whereFilter,
+            limit: pageSize
+          }
+        })
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      if (!Array.isArray(data)) return [];
+      const results: Record<string, any>[] = [];
+      for (const item of data) {
+        if (item && item.document) {
+          const parsed = parseFirestoreDoc(item.document);
+          if (parsed) {
+            if (!parsed.id && typeof item.document.name === 'string') {
+              parsed.id = item.document.name.split('/').pop();
+            }
+            results.push(parsed);
+          }
+        }
+      }
+      return results;
+    }
+
     const res = await fetch(`${info.baseUrl}/${collectionName}?pageSize=${pageSize}&key=${info.apiKey}`);
     if (!res.ok) return [];
     const data = await res.json();
@@ -307,7 +374,12 @@ async function firestoreListDocs(collectionName: string, pageSize = 300): Promis
     const results: Record<string, any>[] = [];
     for (const docItem of data.documents) {
       const parsed = parseFirestoreDoc(docItem);
-      if (parsed) results.push(parsed);
+      if (parsed) {
+        if (!parsed.id && typeof docItem.name === 'string') {
+          parsed.id = docItem.name.split('/').pop();
+        }
+        results.push(parsed);
+      }
     }
     return results;
   } catch (err) {
@@ -691,6 +763,72 @@ function saveKeys(keys: AccessKey[], changedKey?: AccessKey) {
   }
 }
 
+async function syncKeysFromFirestore(): Promise<AccessKey[]> {
+  const keys = getKeys();
+  try {
+    const remoteKeys = await firestoreListDocs('accessKeys', 500);
+    if (remoteKeys.length > 0) {
+      const WEAK_DEMO_KEYS = new Set([
+        'SLTX-TEST-KEY1-FREE',
+        'SLTX-2026-LIVE-FAST',
+        'SLTX-VIP7-4920-PHAN',
+        'SLTX-PRO9-8821-ELIT',
+        'SLTX-9K4X7M-8P2Q5W-3R9N6V-4T8J2F',
+        'SLTX-7W3Q9Z-5M8K2P-6X4R9T-8N3V7C',
+        'RVX-TEST-KEY1-FREE',
+        'RVX-2026-LIVE-FAST',
+        'RVX-VIP7-4920-PHAN',
+        'RVX-PRO9-8821-ELIT'
+      ]);
+      const byKeyString = new Map<string, AccessKey>();
+      const remoteKeySet = new Set<string>();
+      for (const rk of remoteKeys) {
+        if (rk && rk.key) {
+          remoteKeySet.add(String(rk.key).toUpperCase());
+        }
+      }
+      const nowMs = Date.now();
+      for (const lk of keys) {
+        if (lk && lk.key && !WEAK_DEMO_KEYS.has(lk.key.toUpperCase())) {
+          const kUpper = lk.key.toUpperCase();
+          const createdMs = lk.createdAt ? new Date(lk.createdAt).getTime() : 0;
+          // Keep local key if it exists in Firestore OR was created within the last 15 seconds
+          if (remoteKeySet.has(kUpper) || (nowMs - createdMs < 15000)) {
+            byKeyString.set(kUpper, lk);
+          }
+        }
+      }
+      for (const rk of remoteKeys) {
+        if (rk && rk.key && !WEAK_DEMO_KEYS.has(String(rk.key).toUpperCase())) {
+          const typed = rk as AccessKey;
+          const kUpper = typed.key.toUpperCase();
+          const existing = byKeyString.get(kUpper);
+          if (!existing) {
+            byKeyString.set(kUpper, typed);
+          } else {
+            const tRem = typed.updatedAt ? new Date(typed.updatedAt).getTime() : 0;
+            const tLoc = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+            if (tRem >= tLoc || (typed.activatedAt && !existing.activatedAt)) {
+              byKeyString.set(kUpper, typed);
+            }
+          }
+        }
+      }
+      const merged = Array.from(byKeyString.values()).sort(
+        (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+      );
+      memoryKeys = merged;
+      try {
+        fs.writeFileSync(keysFile, JSON.stringify(merged, null, 2), 'utf-8');
+      } catch {}
+      return merged;
+    }
+  } catch (err) {
+    console.warn('syncKeysFromFirestore notice:', err);
+  }
+  return keys;
+}
+
 function getSalesFromDisk(): PaymentOrder[] {
   try {
     if (fs.existsSync(salesFile)) {
@@ -914,17 +1052,13 @@ app.post('/api/verify-key', async (req: Request, res: Response) => {
   }
 
   const cleanedKey = rawKey.trim().toUpperCase();
-  const keys = getKeys();
+  let keys = getKeys();
   let keyDoc = keys.find(k => k.key.toUpperCase() === cleanedKey);
 
-  // If not in local memory yet, check Firestore directly
+  // If not in local memory yet, sync from Firestore directly
   if (!keyDoc) {
-    const remoteKeys = await firestoreListDocs('accessKeys', 500);
-    const foundRemote = remoteKeys.find(rk => String(rk.key || '').toUpperCase() === cleanedKey);
-    if (foundRemote) {
-      keyDoc = foundRemote as AccessKey;
-      keys.unshift(keyDoc);
-    }
+    keys = await syncKeysFromFirestore();
+    keyDoc = keys.find(k => k.key.toUpperCase() === cleanedKey);
   }
 
   if (!keyDoc) {
@@ -1039,7 +1173,7 @@ app.post('/api/verify-key', async (req: Request, res: Response) => {
 });
 
 // API: Validate active customer session (checks server-side revocation, deletion, expiry, logout lock, and session reset)
-app.post('/api/session/validate', (req: Request, res: Response) => {
+app.post('/api/session/validate', async (req: Request, res: Response) => {
   const rawKey = typeof req.body?.key === 'string' ? req.body.key.trim().toUpperCase() : '';
   const deviceId = typeof req.body?.deviceId === 'string' ? req.body.deviceId.trim() : '';
   const sessionToken = typeof req.body?.sessionToken === 'string' ? req.body.sessionToken.trim() : '';
@@ -1048,8 +1182,12 @@ app.post('/api/session/validate', (req: Request, res: Response) => {
     return res.status(400).json({ valid: false, reason: 'invalid', message: 'Invalid Access Key' });
   }
 
-  const keys = getKeys();
-  const keyDoc = keys.find(k => k.key.toUpperCase() === rawKey);
+  let keys = getKeys();
+  let keyDoc = keys.find(k => k.key.toUpperCase() === rawKey);
+  if (!keyDoc) {
+    keys = await syncKeysFromFirestore();
+    keyDoc = keys.find(k => k.key.toUpperCase() === rawKey);
+  }
   if (!keyDoc) {
     return res.status(403).json({ valid: false, reason: 'deleted', message: 'Access Key has been deleted' });
   }
@@ -1118,8 +1256,12 @@ app.post('/api/session/logout', async (req: Request, res: Response) => {
     return res.status(400).json({ success: false });
   }
 
-  const keys = getKeys();
-  const keyDoc = keys.find(k => k.key.toUpperCase() === rawKey);
+  let keys = getKeys();
+  let keyDoc = keys.find(k => k.key.toUpperCase() === rawKey);
+  if (!keyDoc) {
+    keys = await syncKeysFromFirestore();
+    keyDoc = keys.find(k => k.key.toUpperCase() === rawKey);
+  }
   if (keyDoc) {
     if (!keyDoc.boundDeviceId && deviceId) {
       keyDoc.boundDeviceId = deviceId;
@@ -1476,8 +1618,8 @@ app.post('/api/admin/remove-video', async (req: Request, res: Response) => {
 });
 
 // API: Admin get all keys + statistics + audit logs
-app.get('/api/admin/keys', (_req: Request, res: Response) => {
-  const keys = getKeys();
+app.get('/api/admin/keys', async (_req: Request, res: Response) => {
+  const keys = await syncKeysFromFirestore();
   const now = Date.now();
   let dirty = false;
   keys.forEach(k => {
@@ -1599,8 +1741,12 @@ app.post('/api/admin/keys/generate', async (req: Request, res: Response) => {
 // API: Admin explicitly activate or deactivate a key (without resetting original expiry)
 app.post('/api/admin/keys/status', async (req: Request, res: Response) => {
   const { id, action } = req.body || {};
-  const keys = getKeys();
-  const item = keys.find(k => k.id === id);
+  let keys = getKeys();
+  let item = keys.find(k => k.id === id);
+  if (!item) {
+    keys = await syncKeysFromFirestore();
+    item = keys.find(k => k.id === id);
+  }
   if (!item) return res.status(404).json({ success: false, message: 'Key not found' });
 
   if (action === 'deactivate') {
@@ -1652,8 +1798,12 @@ app.post('/api/admin/keys/status', async (req: Request, res: Response) => {
 // API: Admin toggle key status (legacy/convenience endpoint)
 app.post('/api/admin/keys/toggle', async (req: Request, res: Response) => {
   const { id } = req.body || {};
-  const keys = getKeys();
-  const item = keys.find(k => k.id === id);
+  let keys = getKeys();
+  let item = keys.find(k => k.id === id);
+  if (!item) {
+    keys = await syncKeysFromFirestore();
+    item = keys.find(k => k.id === id);
+  }
   if (!item) return res.status(404).json({ success: false, message: 'Key not found' });
 
   const wasActive = item.status === 'active';
@@ -1698,8 +1848,12 @@ app.post('/api/admin/keys/renew', async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, message: 'Valid key ID and positive duration required' });
   }
 
-  const keys = getKeys();
-  const item = keys.find(k => k.id === id);
+  let keys = getKeys();
+  let item = keys.find(k => k.id === id);
+  if (!item) {
+    keys = await syncKeysFromFirestore();
+    item = keys.find(k => k.id === id);
+  }
   if (!item) {
     return res.status(404).json({ success: false, message: 'Key not found' });
   }
@@ -1769,8 +1923,12 @@ app.post('/api/admin/keys/edit', async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, message: 'Customer name cannot be empty' });
   }
 
-  const keys = getKeys();
-  const item = keys.find(k => k.id === id);
+  let keys = getKeys();
+  let item = keys.find(k => k.id === id);
+  if (!item) {
+    keys = await syncKeysFromFirestore();
+    item = keys.find(k => k.id === id);
+  }
   if (!item) {
     return res.status(404).json({ success: false, message: 'Key not found' });
   }
@@ -1799,8 +1957,12 @@ app.post('/api/admin/keys/edit', async (req: Request, res: Response) => {
 // API: Admin reset active session / device lock without resetting expiration time
 app.post('/api/admin/keys/reset-session', async (req: Request, res: Response) => {
   const { id } = req.body || {};
-  const keys = getKeys();
-  const item = keys.find(k => k.id === id);
+  let keys = getKeys();
+  let item = keys.find(k => k.id === id);
+  if (!item) {
+    keys = await syncKeysFromFirestore();
+    item = keys.find(k => k.id === id);
+  }
   if (!item) {
     return res.status(404).json({ success: false, message: 'Key not found' });
   }
@@ -1830,7 +1992,11 @@ app.post('/api/admin/keys/reset-session', async (req: Request, res: Response) =>
 app.delete('/api/admin/keys/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   let keys = getKeys();
-  const target = keys.find(k => k.id === id);
+  let target = keys.find(k => k.id === id);
+  if (!target) {
+    keys = await syncKeysFromFirestore();
+    target = keys.find(k => k.id === id);
+  }
   if (!target) {
     return res.status(404).json({ success: false, message: 'Key not found' });
   }

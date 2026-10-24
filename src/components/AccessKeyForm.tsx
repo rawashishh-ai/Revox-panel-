@@ -1,8 +1,133 @@
 import React, { useState, useEffect } from 'react';
+import { collection, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 import { Language, VerificationResult } from '../types';
 import { translations } from '../translations';
 import { VerificationOverlay, VerificationState } from './VerificationOverlay';
 import { getOrCreateDeviceId } from '../deviceId';
+
+async function verifyKeyDirectlyWithFirestore(
+  cleanKey: string,
+  deviceId: string
+): Promise<{
+  valid: boolean;
+  reason?: string;
+  message?: string;
+  data?: NonNullable<VerificationResult['data']>;
+}> {
+  const q = query(
+    collection(db, 'accessKeys'),
+    where('status', 'in', ['active', 'revoked', 'expired'])
+  );
+  const snap = await getDocs(q);
+
+  let foundDocId: string | null = null;
+  let foundData: Record<string, any> | null = null;
+
+  snap.forEach(docSnap => {
+    if (docSnap.exists()) {
+      const d = docSnap.data();
+      if (String(d.key || '').trim().toUpperCase() === cleanKey) {
+        foundDocId = docSnap.id;
+        foundData = { ...d, id: docSnap.id };
+      }
+    }
+  });
+
+  if (!foundDocId || !foundData) {
+    return { valid: false, reason: 'not_found', message: 'Invalid Access Key' };
+  }
+
+  const keyDoc = foundData as Record<string, any>;
+
+  if (keyDoc.status === 'revoked') {
+    return { valid: false, reason: 'revoked', message: 'Access Key has been revoked' };
+  }
+
+  const now = Date.now();
+  if (keyDoc.expiresAt && new Date(keyDoc.expiresAt).getTime() <= now) {
+    try {
+      await setDoc(doc(db, 'accessKeys', foundDocId), { status: 'expired' }, { merge: true });
+    } catch {}
+    return { valid: false, reason: 'expired', message: 'Access Key has expired' };
+  }
+
+  if (keyDoc.activeSessionToken && String(keyDoc.activeSessionToken).startsWith('LOCKED_LOGGED_OUT_')) {
+    return { valid: false, reason: 'logged_out', message: 'Access Key already used' };
+  }
+
+  const nowIso = new Date(now).toISOString();
+  let activatedAt: string | null = keyDoc.activatedAt || null;
+  let expiresAt: string | null = keyDoc.expiresAt || null;
+  let boundDeviceId: string | null = keyDoc.boundDeviceId || null;
+  let activeSessionToken: string | null = keyDoc.activeSessionToken || null;
+
+  if (boundDeviceId) {
+    if (deviceId && boundDeviceId !== deviceId) {
+      return { valid: false, reason: 'device_locked', message: 'Access Key already used' };
+    }
+    if (!activeSessionToken) {
+      activeSessionToken = `sess_${now}_${Math.random().toString(36).slice(2, 12)}`;
+    }
+  } else {
+    if (!activatedAt) {
+      activatedAt = nowIso;
+    }
+    boundDeviceId = deviceId || `DEV-BOUND-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
+    activeSessionToken = `sess_${now}_${Math.random().toString(36).slice(2, 12)}`;
+
+    const durationDaysNum = Number(keyDoc.durationDays) || 0;
+    const computedDurationMs = keyDoc.durationMs
+      ? Number(keyDoc.durationMs)
+      : durationDaysNum > 0
+      ? durationDaysNum * 24 * 60 * 60 * 1000
+      : 0;
+
+    if (computedDurationMs > 0 && !expiresAt) {
+      expiresAt = new Date(now + computedDurationMs).toISOString();
+    }
+  }
+
+  const updatedFields = {
+    key: String(keyDoc.key || cleanKey),
+    status: 'active',
+    durationDays: Number(keyDoc.durationDays) || 30,
+    createdAt: String(keyDoc.createdAt || nowIso),
+    activatedAt,
+    expiresAt,
+    boundDeviceId,
+    activeSessionToken,
+    lastVerifiedAt: nowIso,
+    updatedAt: nowIso
+  };
+
+  try {
+    await setDoc(doc(db, 'accessKeys', foundDocId), updatedFields, { merge: true });
+  } catch (err) {
+    console.warn('Firestore activation update warning:', err);
+  }
+
+  const remainingMs = expiresAt ? Math.max(0, new Date(expiresAt).getTime() - now) : null;
+
+  return {
+    valid: true,
+    message: 'Access Granted',
+    data: {
+      key: String(keyDoc.key || cleanKey),
+      customerName: keyDoc.customerName || 'Customer',
+      durationDays: Number(keyDoc.durationDays) || 30,
+      durationUnit: keyDoc.durationUnit || (Number(keyDoc.durationDays) === 0 ? 'lifetime' : 'days'),
+      durationValue: keyDoc.durationValue ?? keyDoc.durationDays ?? 30,
+      status: 'active',
+      activatedAt,
+      expiresAt,
+      remainingMs,
+      boundDeviceId,
+      sessionToken: activeSessionToken || undefined,
+      notes: keyDoc.notes || ''
+    }
+  };
+}
 
 interface AccessKeyFormProps {
   lang: Language;
@@ -100,29 +225,53 @@ export const AccessKeyForm: React.FC<AccessKeyFormProps> = ({
     setErrorMessage(null);
     setVerifyState('verifying');
 
+    const deviceId = getOrCreateDeviceId();
+
     try {
-      const deviceId = getOrCreateDeviceId();
       const storedSessionToken =
         localStorage.getItem(`rvx_session_token_${cleanKey}`) ||
         localStorage.getItem(`sltx_session_token_${cleanKey}`) ||
         '';
-      const response = await fetch('/api/verify-key', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: cleanKey, deviceId, sessionToken: storedSessionToken })
-      });
 
+      let responseOk = false;
+      let responseStatus = 0;
       let resData: any = null;
+
       try {
+        const response = await fetch('/api/verify-key', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: cleanKey, deviceId, sessionToken: storedSessionToken })
+        });
+        responseOk = response.ok;
+        responseStatus = response.status;
         resData = await response.json();
       } catch {
         resData = null;
       }
 
+      // If API did not find the key or API is unreachable/404 (e.g., on Vercel), verify directly against Firestore
+      if (
+        !(responseOk && resData && resData.valid && resData.data) &&
+        (!resData || responseStatus === 404 || responseStatus >= 500 || resData?.reason === 'not_found')
+      ) {
+        try {
+          const fsResult = await verifyKeyDirectlyWithFirestore(cleanKey, deviceId);
+          if (fsResult.valid && fsResult.data) {
+            responseOk = true;
+            resData = fsResult;
+          } else if (fsResult.reason && fsResult.reason !== 'not_found') {
+            resData = fsResult;
+          }
+        } catch (fsErr) {
+          console.warn('Firestore direct verify fallback warning:', fsErr);
+        }
+      }
+
       // Ensure scanning animation has at least 800ms of visual time for cinematic feel
       await new Promise(r => setTimeout(r, 800));
 
-      if (response.ok && resData && resData.valid && resData.data) {
+      if (responseOk && resData && resData.valid && resData.data) {
         if (resData.data.sessionToken) {
           try {
             localStorage.setItem(`rvx_session_token_${cleanKey}`, resData.data.sessionToken);
@@ -159,7 +308,8 @@ export const AccessKeyForm: React.FC<AccessKeyFormProps> = ({
           rawMsg.includes('not found') ||
           rawReason === 'not_found' ||
           rawReason === 'invalid' ||
-          response.status === 404
+          responseStatus === 404 ||
+          !resData
         ) {
           msg = 'INVALID KEY';
         } else if (resData?.message) {

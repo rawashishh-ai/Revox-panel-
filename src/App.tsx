@@ -14,7 +14,7 @@ import { AdminPanel } from './components/AdminPanel';
 import { GetKeyModal } from './components/GetKeyModal';
 import { IntroVideoScreen } from './components/IntroVideoScreen';
 import { db, testConnection } from './firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, where, getDocs } from 'firebase/firestore';
 import { getOrCreateDeviceId } from './deviceId';
 
 const CACHED_SETTINGS_STORAGE_KEY = 'rvx_published_settings_v3';
@@ -344,29 +344,90 @@ export default function App() {
     };
   }, [applyAuthoritativeSettings]);
 
-  // 3. Server-Side Active Session Validation (ensures deactivated/deleted/reset keys are immediately revoked)
+  // 3. Server-Side + Direct Firestore Active Session Validation (ensures deactivated/deleted/reset keys are immediately revoked)
   useEffect(() => {
     if (!unlockedKeyData?.key) return;
     let cancelled = false;
 
+    const validateFirestoreSessionFallback = async (cleanKey: string) => {
+      try {
+        const q = query(collection(db, 'accessKeys'), where('status', 'in', ['active', 'revoked', 'expired']));
+        const snap = await getDocs(q);
+        if (cancelled) return;
+        let found: any = null;
+        snap.forEach((docSnap) => {
+          const d = docSnap.data();
+          const kVal = String(d.key || '').trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+          if (kVal === cleanKey) {
+            found = { ...d, id: d.id || docSnap.id };
+          }
+        });
+
+        if (!found) {
+          // If Firestore is reachable and key was deleted from Firestore
+          if (!snap.empty) {
+            localStorage.removeItem('rvx_activated_key');
+            localStorage.removeItem('sltx_activated_key');
+            setUnlockedKeyData(null);
+          }
+          return;
+        }
+
+        const isExpired = found.expiresAt ? new Date(found.expiresAt).getTime() <= Date.now() : false;
+        if (found.status === 'revoked' || found.status === 'expired' || isExpired) {
+          localStorage.removeItem('rvx_activated_key');
+          localStorage.removeItem('sltx_activated_key');
+          setUnlockedKeyData(null);
+          return;
+        }
+
+        setUnlockedKeyData(prev => {
+          if (!prev) return null;
+          if (prev.expiresAt !== found.expiresAt || prev.status !== found.status) {
+            const updated = { ...prev, status: found.status, expiresAt: found.expiresAt };
+            try {
+              localStorage.setItem('rvx_activated_key', JSON.stringify(updated));
+              localStorage.setItem('sltx_activated_key', JSON.stringify(updated));
+            } catch {}
+            return updated;
+          }
+          return prev;
+        });
+      } catch (err) {
+        console.warn('Firestore session validate fallback error:', err);
+      }
+    };
+
     const validateActiveSession = async () => {
+      const cleanKey = unlockedKeyData.key.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
       try {
         const deviceId = getOrCreateDeviceId();
         const sessionToken =
           unlockedKeyData.sessionToken ||
-          localStorage.getItem(`rvx_session_token_${unlockedKeyData.key.toUpperCase()}`) ||
-          localStorage.getItem(`sltx_session_token_${unlockedKeyData.key.toUpperCase()}`) ||
+          localStorage.getItem(`rvx_session_token_${cleanKey}`) ||
+          localStorage.getItem(`sltx_session_token_${cleanKey}`) ||
           '';
         const res = await fetch('/api/session/validate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            key: unlockedKeyData.key,
+            key: cleanKey,
             deviceId,
             sessionToken
           })
         });
         if (cancelled) return;
+
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          await validateFirestoreSessionFallback(cleanKey);
+          return;
+        }
+
+        if (res.status === 404) {
+          await validateFirestoreSessionFallback(cleanKey);
+          return;
+        }
 
         if (res.status === 403 || res.status === 400) {
           const errData = await res.json().catch(() => null);
@@ -390,8 +451,8 @@ export default function App() {
           if (data.valid && data.data) {
             if (data.data.sessionToken) {
               try {
-                localStorage.setItem(`rvx_session_token_${unlockedKeyData.key.toUpperCase()}`, data.data.sessionToken);
-                localStorage.setItem(`sltx_session_token_${unlockedKeyData.key.toUpperCase()}`, data.data.sessionToken);
+                localStorage.setItem(`rvx_session_token_${cleanKey}`, data.data.sessionToken);
+                localStorage.setItem(`sltx_session_token_${cleanKey}`, data.data.sessionToken);
               } catch {}
             }
             setUnlockedKeyData(prev => {
@@ -413,8 +474,8 @@ export default function App() {
           }
         }
       } catch (err) {
-        // Network drops should NOT clear the key session immediately
-        console.warn('Session validate network catch:', err);
+        // Network drops or serverless deployment fallback to Firestore
+        await validateFirestoreSessionFallback(cleanKey);
       }
     };
 

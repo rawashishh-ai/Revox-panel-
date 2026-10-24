@@ -252,8 +252,12 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
                   </div>
 
                   <p className="text-[11px] text-[#a1a1aa] font-sans mt-2">
-                    Unlock your unique access key for <strong className="text-white">₹{price}</strong>.
+                    Instant online key delivery for <strong className="text-white">₹{price}</strong>.
                   </p>
+                  <div className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#3b1261]/60 border border-[#a855f7]/40 text-[#c084fc] text-[9.5px] font-mono-code font-bold">
+                    <span>🔒</span>
+                    <span>STRICT 1-DEVICE LOCK (Single device license)</span>
+                  </div>
                 </div>
               </div>
 
@@ -331,8 +335,21 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
                 </div>
 
                 <p className="text-[11px] text-[#a1a1aa] leading-relaxed">
-                  Complete the ₹{price} payment on TranzUPI. Once completed, your key will automatically unlock!
+                  Complete the ₹{price} payment via UPI. Your 1-device locked access key will generate automatically!
                 </p>
+
+                {activeOrder.upiIntentUrl && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.location.href = activeOrder.upiIntentUrl!;
+                    }}
+                    className="w-full bg-gradient-to-r from-[#9333ea] to-[#7e22ce] hover:brightness-110 active:scale-[0.985] text-white py-2.5 px-3 rounded font-tech font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(168,85,247,0.4)]"
+                  >
+                    <span>📱</span>
+                    <span>Pay with UPI (GPay / PhonePe / Paytm)</span>
+                  </button>
+                )}
 
                 {activeOrder.paymentUrl && (
                   <button
@@ -340,8 +357,24 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
                     onClick={() => window.open(activeOrder.paymentUrl, '_blank')}
                     className="w-full bg-[#1f1430] hover:bg-[#2d1b48] border border-[#a855f7] text-[#c084fc] hover:text-white py-2 px-3 rounded font-tech font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                   >
-                    <span>↗ Open TranzUPI Payment Page</span>
+                    <span>↗ Open Payment Gateway</span>
                   </button>
+                )}
+
+                {activeOrder.upiIntentUrl && (
+                  <div className="flex flex-col items-center justify-center pt-1">
+                    <div className="p-1.5 bg-white rounded shadow-md inline-block">
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=110x110&data=${encodeURIComponent(activeOrder.upiIntentUrl)}`}
+                        alt="Scan UPI QR"
+                        className="w-24 h-24"
+                        loading="lazy"
+                      />
+                    </div>
+                    <span className="text-[9.5px] text-[#a1a1aa] font-mono-code mt-1 font-semibold">
+                      Scan QR code with any UPI app
+                    </span>
+                  </div>
                 )}
 
                 <div className="pt-2 border-t border-[#251538] flex items-center justify-center gap-2">
@@ -444,6 +477,10 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
                 <p className="text-[10.5px] text-[#a1a1aa] font-sans">
                   This key is unique to your purchase. Save it safely!
                 </p>
+                <div className="mt-1 inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#064e3b]/60 border border-[#00D9A0]/50 text-[#a7f3d0] text-[10px] font-mono-code font-bold">
+                  <span>🔒</span>
+                  <span>1-DEVICE LOCK: Works strictly on this device once activated</span>
+                </div>
               </div>
 
               <div className="space-y-2">

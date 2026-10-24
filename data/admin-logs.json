@@ -1,5 +1,35 @@
 [
   {
+    "action": "KEY_DELETED",
+    "label": "Key deleted",
+    "customerName": "TEST_VERIFY",
+    "maskedKey": "RVX-VZB7-••••-97CM",
+    "keyId": "key_1792832611922_abb6f15e",
+    "details": "Deleted access key for TEST_VERIFY",
+    "id": "log_1792832612542_ce6bfe",
+    "timestamp": "2026-10-24T09:03:32.542Z"
+  },
+  {
+    "action": "KEY_ACTIVATED",
+    "label": "Key activated",
+    "customerName": "TEST_VERIFY",
+    "maskedKey": "RVX-VZB7-6JVT-97CM",
+    "keyId": "key_1792832611922_abb6f15e",
+    "details": "First activation by TEST_VERIFY",
+    "id": "log_1792832612496_526079",
+    "timestamp": "2026-10-24T09:03:32.496Z"
+  },
+  {
+    "action": "KEY_GENERATED",
+    "label": "Key generated",
+    "customerName": "TEST_VERIFY",
+    "maskedKey": "RVX-VZB7-6JVT-97CM",
+    "keyId": "key_1792832611922_abb6f15e",
+    "details": "1 DAYS for TEST_VERIFY",
+    "id": "log_1792832612409_299cc5",
+    "timestamp": "2026-10-24T09:03:32.409Z"
+  },
+  {
     "action": "KEY_GENERATED",
     "label": "Key generated",
     "customerName": "Ashish",
