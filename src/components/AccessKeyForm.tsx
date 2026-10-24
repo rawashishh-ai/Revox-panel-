@@ -31,7 +31,6 @@ export const AccessKeyForm: React.FC<AccessKeyFormProps> = ({
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [pasteFeedback, setPasteFeedback] = useState(false);
-  const [shake, setShake] = useState(false);
 
   // Cinematic Verification Overlay State
   const [verifyState, setVerifyState] = useState<VerificationState>('idle');
@@ -94,7 +93,6 @@ export const AccessKeyForm: React.FC<AccessKeyFormProps> = ({
 
     if (!cleanKey) {
       setErrorMessage(t.invalidKey);
-      triggerShake();
       return;
     }
 
@@ -192,12 +190,6 @@ export const AccessKeyForm: React.FC<AccessKeyFormProps> = ({
   const handleErrorComplete = () => {
     setVerifyState('idle');
     setLoading(false);
-    triggerShake();
-  };
-
-  const triggerShake = () => {
-    setShake(true);
-    setTimeout(() => setShake(false), 500);
   };
 
   return (
@@ -236,7 +228,7 @@ export const AccessKeyForm: React.FC<AccessKeyFormProps> = ({
         <div 
           className={`relative p-[1px] ${
             errorMessage ? 'bg-[#ef4444]' : 'bg-[#3b1c63] focus-within:bg-[#a855f7]'
-          } clip-input-box transition-colors duration-200 ${shake ? 'animate-bounce' : ''}`}
+          } clip-input-box transition-colors duration-200`}
         >
           <div className="bg-[#0e0e12] clip-input-box flex items-center justify-between px-3 py-1.5">
             <input

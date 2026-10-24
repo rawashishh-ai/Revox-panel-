@@ -62,7 +62,7 @@ export const VerificationOverlay: React.FC<VerificationOverlayProps> = ({
           stage === 'verified' 
             ? 'bg-[#00D9A0]/60' 
             : stage === 'error'
-              ? 'bg-[#E50914] animate-bounce'
+              ? 'bg-[#E50914]'
               : 'bg-[#581c87]'
         } clip-announcement shadow-[0_0_50px_-10px_rgba(0,0,0,0.9)] transition-colors duration-500`}
       >

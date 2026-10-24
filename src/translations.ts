@@ -3,10 +3,10 @@ import { Language } from './types';
 export const translations = {
   EN: {
     moving: "WE'RE MOVING",
-    from: "SILENTX",
-    to: "PHANTOM",
+    from: "ANTIBAN",
+    to: "REVOX PANEL",
     announcementLines: [
-      "Existing SILENTX access keys remain 100% valid.",
+      "Existing ANTIBAN access keys remain 100% valid.",
       "Phantom delivers enhanced bypass with ultra-low latency.",
       "Your active remaining time transfers automatically on activation.",
       "Connect on WhatsApp for 24/7 key verification & priority support."
@@ -41,10 +41,10 @@ export const translations = {
   },
   HI: {
     moving: "हम स्थानांतरित हो रहे हैं",
-    from: "SILENTX",
-    to: "PHANTOM",
+    from: "ANTIBAN",
+    to: "REVOX PANEL",
     announcementLines: [
-      "आपकी मौजूदा SILENTX एक्सेस की (Key) 100% मान्य है।",
+      "आपकी मौजूदा ANTIBAN एक्सेस की (Key) 100% मान्य है।",
       "Phantom अल्ट्रा-लो लेटेंसी के साथ बेहतर बाईपास प्रदान करता है।",
       "आपका शेष सक्रिय समय अपने आप ट्रांसफर हो जाएगा।",
       "24/7 सहायता और की सत्यापन के लिए व्हाट्सएप पर जुड़ें।"

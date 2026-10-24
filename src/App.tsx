@@ -134,7 +134,7 @@ export default function App() {
           websiteTitle: resolvedWebsiteTitle,
           panelName: resolvedPanelName,
           announcementTitle: incoming.announcementTitle ?? prev?.announcementTitle ?? "WE'RE MOVING",
-          announcementFrom: incoming.announcementFrom ?? prev?.announcementFrom ?? 'SILENTX',
+          announcementFrom: (incoming.announcementFrom && incoming.announcementFrom !== 'SILENTX') ? incoming.announcementFrom : ((prev?.announcementFrom && prev.announcementFrom !== 'SILENTX') ? prev.announcementFrom : 'ANTIBAN'),
           announcementTo: incoming.announcementTo ?? prev?.announcementTo ?? resolvedPanelName,
           announcementText: incoming.announcementText ?? prev?.announcementText ?? '',
           announcementBody: incoming.announcementBody ?? prev?.announcementBody ?? '',
@@ -459,7 +459,7 @@ export default function App() {
     websiteTitle: 'REVOX PANEL',
     panelName: 'REVOX PANEL',
     announcementTitle: "WE'RE MOVING",
-    announcementFrom: 'SILENTX',
+    announcementFrom: 'ANTIBAN',
     announcementTo: 'REVOX PANEL',
     announcementBody: '',
     announcementLines: [

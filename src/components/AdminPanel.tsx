@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { SiteSettings, AccessKey, AdminAuditLog } from '../types';
 import { auth, googleProvider, db, storage } from '../firebase';
 import { signInWithPopup, signOut } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, getDocs, collection, deleteDoc, updateDoc } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Direct16x9VideoPlayer } from './IntroVideoScreen';
+import { generateClientCryptoKey } from '../keyGenerator';
 
 interface AdminPanelProps {
   currentSettings: SiteSettings;
@@ -153,7 +154,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [annTitle, setAnnTitle] = useState(currentSettings.announcementTitle || "WE'RE MOVING");
-  const [annFrom, setAnnFrom] = useState(currentSettings.announcementFrom || 'SILENTX');
+  const [annFrom, setAnnFrom] = useState(
+    (currentSettings.announcementFrom && currentSettings.announcementFrom !== 'SILENTX')
+      ? currentSettings.announcementFrom
+      : 'ANTIBAN'
+  );
   const [annLines, setAnnLines] = useState<string[]>(
     currentSettings.announcementLines && currentSettings.announcementLines.length > 0
       ? currentSettings.announcementLines
@@ -204,7 +209,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     );
     setLogoPositionY(currentSettings.logoPositionY || 0);
     setAnnTitle(currentSettings.announcementTitle || "WE'RE MOVING");
-    setAnnFrom(currentSettings.announcementFrom || 'SILENTX');
+    setAnnFrom(
+      (currentSettings.announcementFrom && currentSettings.announcementFrom !== 'SILENTX')
+        ? currentSettings.announcementFrom
+        : 'ANTIBAN'
+    );
     if (Array.isArray(currentSettings.announcementLines)) {
       setAnnLines(currentSettings.announcementLines);
     }
@@ -267,19 +276,58 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const fetchKeys = async (silent = false) => {
     if (!silent) setLoadingKeys(true);
+    let loadedFromApi = false;
     try {
       const res = await adminFetch('/api/admin/keys');
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data.success) {
-        setKeys(data.keys || []);
+      const text = await res.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(text);
+      } catch {}
+
+      if (res.ok && data?.success && Array.isArray(data.keys)) {
+        setKeys(data.keys);
         if (Array.isArray(data.logs)) setLogs(data.logs);
+        loadedFromApi = true;
       }
     } catch (err) {
-      console.error('Error fetching keys:', err);
-    } finally {
-      if (!silent) setLoadingKeys(false);
+      console.warn('API fetchKeys error, trying Firestore fallback:', err);
     }
+
+    // Direct Firestore fallback (ensures keys load even if Vercel or custom domain returns 404)
+    if (!loadedFromApi) {
+      try {
+        const querySnap = await getDocs(collection(db, 'accessKeys'));
+        const firestoreKeys: AccessKey[] = [];
+        querySnap.forEach(docSnap => {
+          if (docSnap.exists()) {
+            const d = docSnap.data();
+            firestoreKeys.push({
+              id: docSnap.id,
+              key: d.key,
+              customerName: d.customerName || 'Customer',
+              durationDays: Number(d.durationDays) || 30,
+              durationUnit: d.durationUnit || 'days',
+              durationValue: d.durationValue ?? d.durationDays ?? 30,
+              durationMs: d.durationMs,
+              status: d.status || 'active',
+              createdAt: d.createdAt || new Date().toISOString(),
+              activatedAt: d.activatedAt || null,
+              expiresAt: d.expiresAt || null,
+              boundDeviceId: d.boundDeviceId || null,
+              activeSessionToken: d.activeSessionToken || null,
+              notes: d.notes || ''
+            });
+          }
+        });
+        firestoreKeys.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setKeys(firestoreKeys);
+      } catch (fsErr) {
+        console.error('Firestore fallback fetchKeys error:', fsErr);
+      }
+    }
+
+    if (!silent) setLoadingKeys(false);
   };
 
   useEffect(() => {
@@ -382,6 +430,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     const quantity = Math.min(Math.max(1, Number(genCustomCount) || 1), 50);
 
     setGenerating(true);
+    let generatedSuccessfully = false;
+
+    // 1. Try backend API first
     try {
       const res = await adminFetch('/api/admin/keys/generate', {
         method: 'POST',
@@ -394,22 +445,81 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           notes: genNotes.trim()
         })
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || 'Failed to generate key');
-      }
 
-      const newlyCreated: AccessKey[] = data.generated || [];
-      setGeneratedBatch(newlyCreated);
-      if (Array.isArray(data.logs)) setLogs(data.logs);
-      await fetchKeys(true);
-      showToast(`Generated ${newlyCreated.length} Key(s)!`, 'success');
-    } catch (err: any) {
-      setGenError(err?.message || 'Error generating key');
-      showToast(err?.message || 'Failed to generate key', 'error');
-    } finally {
-      setGenerating(false);
+      const text = await res.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(text);
+      } catch {}
+
+      if (res.ok && data?.success && Array.isArray(data.generated)) {
+        const newlyCreated: AccessKey[] = data.generated;
+        setGeneratedBatch(newlyCreated);
+        if (Array.isArray(data.logs)) setLogs(data.logs);
+        await fetchKeys(true);
+        showToast(`Generated ${newlyCreated.length} Key(s)!`, 'success');
+        generatedSuccessfully = true;
+      }
+    } catch (apiErr) {
+      console.warn('API generateKey failed, trying Firestore fallback:', apiErr);
     }
+
+    // 2. Direct Firestore fallback (runs instantly if API returns 404 on Vercel/proxy)
+    if (!generatedSuccessfully) {
+      try {
+        const nowMs = Date.now();
+        const nowIso = new Date(nowMs).toISOString();
+
+        let durationMs = 0;
+        let durationDays = 0;
+        if (genDurationUnit === 'minutes') {
+          durationMs = Math.max(1, durNum) * 60 * 1000;
+          durationDays = Number((durNum / (60 * 24)).toFixed(4));
+        } else if (genDurationUnit === 'hours') {
+          durationMs = Math.max(1, durNum) * 60 * 60 * 1000;
+          durationDays = Number((durNum / 24).toFixed(4));
+        } else {
+          durationDays = Math.max(1, durNum);
+          durationMs = durationDays * 24 * 60 * 60 * 1000;
+        }
+
+        const fallbackBatch: AccessKey[] = [];
+        for (let i = 0; i < quantity; i++) {
+          const uniqueKey = generateClientCryptoKey('RVX');
+          const keyId = `key_${nowMs}_${Math.random().toString(36).slice(2, 8)}`;
+          const keyDocData: AccessKey = {
+            id: keyId,
+            key: uniqueKey,
+            customerName: cleanCustomer,
+            durationDays,
+            durationUnit: genDurationUnit,
+            durationValue: durNum,
+            durationMs,
+            status: 'active',
+            createdAt: nowIso,
+            activatedAt: null,
+            expiresAt: null,
+            boundDeviceId: null,
+            activeSessionToken: null,
+            notes: genNotes.trim()
+          };
+
+          await setDoc(doc(db, 'accessKeys', keyId), keyDocData);
+          fallbackBatch.push(keyDocData);
+        }
+
+        setGeneratedBatch(fallbackBatch);
+        setKeys(prev => [...fallbackBatch, ...prev]);
+        showToast(`Generated ${fallbackBatch.length} Key(s)!`, 'success');
+        generatedSuccessfully = true;
+      } catch (fsErr: any) {
+        console.error('Firestore fallback generation error:', fsErr);
+        setGenError(fsErr?.message || 'Error generating key');
+        showToast(fsErr?.message || 'Failed to generate key', 'error');
+      }
+    }
+
+    setGenerating(false);
   };
 
   const handleCopyText = (text: string, idForFeedback?: string, customToast = 'Key Copied!') => {
@@ -426,65 +536,113 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const handleSetKeyStatus = async (keyItem: AccessKey, action: 'activate' | 'deactivate') => {
     if (actionBusyId) return;
     setActionBusyId(keyItem.id);
+    let success = false;
     try {
       const res = await adminFetch('/api/admin/keys/status', {
         method: 'POST',
         body: JSON.stringify({ id: keyItem.id, action })
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || 'Failed to update status');
+      const text = await res.text();
+      let data: any = null;
+      try { data = JSON.parse(text); } catch {}
+      if (res.ok && data?.success && data.key) {
+        setKeys(prev => prev.map(k => (k.id === keyItem.id ? data.key : k)));
+        success = true;
       }
-      setKeys(prev => prev.map(k => (k.id === keyItem.id ? data.key : k)));
-      showToast(action === 'deactivate' ? 'Key Blocked' : 'Key Unblocked', 'success');
-    } catch (err: any) {
-      showToast(err?.message || 'Update failed', 'error');
-    } finally {
-      setActionBusyId(null);
+    } catch {}
+
+    if (!success) {
+      try {
+        const newStatus = action === 'deactivate' ? 'revoked' : 'active';
+        await updateDoc(doc(db, 'accessKeys', keyItem.id), { status: newStatus });
+        setKeys(prev => prev.map(k => (k.id === keyItem.id ? { ...k, status: newStatus } : k)));
+        success = true;
+      } catch (err: any) {
+        showToast(err?.message || 'Update failed', 'error');
+      }
     }
+
+    if (success) {
+      showToast(action === 'deactivate' ? 'Key Blocked' : 'Key Unblocked', 'success');
+    }
+    setActionBusyId(null);
   };
 
   const handleResetKeySession = async (keyItem: AccessKey) => {
     if (actionBusyId) return;
     setActionBusyId(keyItem.id);
+    let success = false;
     try {
       const res = await adminFetch('/api/admin/keys/reset-session', {
         method: 'POST',
         body: JSON.stringify({ id: keyItem.id })
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || 'Failed to unlock device');
+      const text = await res.text();
+      let data: any = null;
+      try { data = JSON.parse(text); } catch {}
+      if (res.ok && data?.success && data.key) {
+        setKeys(prev => prev.map(k => (k.id === keyItem.id ? data.key : k)));
+        success = true;
       }
-      setKeys(prev => prev.map(k => (k.id === keyItem.id ? data.key : k)));
-      showToast('Device Lock Reset! Key can be used again.', 'success');
-    } catch (err: any) {
-      showToast(err?.message || 'Failed to unlock device', 'error');
-    } finally {
-      setActionBusyId(null);
+    } catch {}
+
+    if (!success) {
+      try {
+        await updateDoc(doc(db, 'accessKeys', keyItem.id), {
+          boundDeviceId: null,
+          activeSessionToken: null
+        });
+        setKeys(prev =>
+          prev.map(k =>
+            k.id === keyItem.id
+              ? { ...k, boundDeviceId: null, activeSessionToken: null }
+              : k
+          )
+        );
+        success = true;
+      } catch (err: any) {
+        showToast(err?.message || 'Failed to unlock device', 'error');
+      }
     }
+
+    if (success) {
+      showToast('Device Lock Reset! Key can be used again.', 'success');
+    }
+    setActionBusyId(null);
   };
 
   const handleConfirmDeleteKey = async () => {
     if (!deleteTargetKey || deletingKey) return;
     setDeletingKey(true);
+    let success = false;
     try {
       const res = await adminFetch(`/api/admin/keys/${deleteTargetKey.id}`, {
         method: 'DELETE'
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || 'Failed to delete key');
+      const text = await res.text();
+      let data: any = null;
+      try { data = JSON.parse(text); } catch {}
+      if (res.ok && data?.success) {
+        success = true;
       }
+    } catch {}
+
+    if (!success) {
+      try {
+        await deleteDoc(doc(db, 'accessKeys', deleteTargetKey.id));
+        success = true;
+      } catch (err: any) {
+        showToast(err?.message || 'Delete failed', 'error');
+      }
+    }
+
+    if (success) {
       setKeys(prev => prev.filter(k => k.id !== deleteTargetKey.id));
       setGeneratedBatch(prev => prev.filter(k => k.id !== deleteTargetKey.id));
       setDeleteTargetKey(null);
       showToast('Key Deleted', 'success');
-    } catch (err: any) {
-      showToast(err?.message || 'Delete failed', 'error');
-    } finally {
-      setDeletingKey(false);
     }
+    setDeletingKey(false);
   };
 
   const handleConfirmRenewKey = async (e: React.FormEvent) => {
@@ -497,6 +655,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
 
     setRenewingKey(true);
+    let success = false;
     try {
       const res = await adminFetch('/api/admin/keys/renew', {
         method: 'POST',
@@ -506,18 +665,54 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           durationUnit: renewDurationUnit
         })
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || 'Failed to add time');
+      const text = await res.text();
+      let data: any = null;
+      try { data = JSON.parse(text); } catch {}
+      if (res.ok && data?.success && data.key) {
+        setKeys(prev => prev.map(k => (k.id === renewTargetKey.id ? data.key : k)));
+        success = true;
       }
-      setKeys(prev => prev.map(k => (k.id === renewTargetKey.id ? data.key : k)));
+    } catch {}
+
+    if (!success) {
+      try {
+        const addedMs =
+          renewDurationUnit === 'minutes'
+            ? durVal * 60 * 1000
+            : renewDurationUnit === 'hours'
+            ? durVal * 60 * 60 * 1000
+            : durVal * 24 * 60 * 60 * 1000;
+
+        let newExpiresAt: string | null = null;
+        if (renewTargetKey.expiresAt) {
+          const baseMs = Math.max(Date.now(), new Date(renewTargetKey.expiresAt).getTime());
+          newExpiresAt = new Date(baseMs + addedMs).toISOString();
+        }
+
+        const updatedPartial = {
+          durationValue: durVal,
+          durationUnit: renewDurationUnit,
+          durationDays: renewDurationUnit === 'days' ? durVal : Number((addedMs / 86400000).toFixed(4)),
+          durationMs: (renewTargetKey.durationMs || 0) + addedMs,
+          status: 'active' as const,
+          ...(newExpiresAt ? { expiresAt: newExpiresAt } : {})
+        };
+
+        await updateDoc(doc(db, 'accessKeys', renewTargetKey.id), updatedPartial);
+        setKeys(prev =>
+          prev.map(k => (k.id === renewTargetKey.id ? { ...k, ...updatedPartial } : k))
+        );
+        success = true;
+      } catch (err: any) {
+        showToast(err?.message || 'Failed to add time', 'error');
+      }
+    }
+
+    if (success) {
       setRenewTargetKey(null);
       showToast(`Added +${durVal} ${renewDurationUnit}!`, 'success');
-    } catch (err: any) {
-      showToast(err?.message || 'Failed to add time', 'error');
-    } finally {
-      setRenewingKey(false);
     }
+    setRenewingKey(false);
   };
 
   // Live Key Metrics
@@ -795,7 +990,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         logoSize,
         logoPositionY,
         announcementTitle: annTitle.trim() || "WE'RE MOVING",
-        announcementFrom: annFrom.trim() || 'SILENTX',
+        announcementFrom: annFrom.trim() || 'ANTIBAN',
         announcementLines: cleanLines,
         announcementText: cleanLines.join('\n'),
         whatsappNumber: formattedWhatsapp,

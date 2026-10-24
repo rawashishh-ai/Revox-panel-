@@ -423,7 +423,7 @@ function normalizeSettings(raw: Partial<SiteSettings>): SiteSettings {
     websiteTitle: resolvedWebsiteTitle,
     panelName: resolvedPanelName,
     announcementTitle: raw.announcementTitle || "WE'RE MOVING",
-    announcementFrom: raw.announcementFrom || 'SILENTX',
+    announcementFrom: (raw.announcementFrom && raw.announcementFrom !== 'SILENTX') ? raw.announcementFrom : 'ANTIBAN',
     announcementTo: raw.announcementTo || resolvedPanelName,
     announcementText: raw.announcementText || lines.join('\n'),
     announcementBody: raw.announcementBody || '',
@@ -1898,7 +1898,7 @@ app.post('/api/payments/create-order', async (req: Request, res: Response) => {
           currency: 'INR',
           order_id: orderId,
           merchant_vpa: TRANZUPI_MERCHANT_VPA,
-          note: `SILENTX Access Key - ${orderId}`,
+          note: `ANTIBAN Access Key - ${orderId}`,
           customer_name: customerName || 'Customer',
           customer_phone: customerPhone || ''
         })
@@ -2185,9 +2185,17 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`SILENTX // PHANTOM Server running on http://0.0.0.0:${PORT}`);
-  });
+  if (!process.env.VERCEL) {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`REVOX PANEL Server running on http://0.0.0.0:${PORT}`);
+    });
+  }
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export default app;
+export { app };
+

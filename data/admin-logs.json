@@ -1,5 +1,15 @@
 [
   {
+    "action": "KEY_GENERATED",
+    "label": "Key generated",
+    "customerName": "Ashish",
+    "maskedKey": "RVX-B52L-TKF5-2C7V",
+    "keyId": "key_1792827831200_59b1bdf2",
+    "details": "1 HOURS for Ashish",
+    "id": "log_1792827831269_093d48",
+    "timestamp": "2026-10-24T07:43:51.269Z"
+  },
+  {
     "action": "KEY_DELETED",
     "label": "Key deleted",
     "customerName": "Rahul",
