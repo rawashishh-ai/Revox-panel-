@@ -608,17 +608,27 @@ async function hydrateFromFirestore() {
       }
     }
 
-    // First put local keys (skipping weak demo keys)
+    // First put local keys (skipping weak demo keys), deduplicated by uppercase key string
     for (const lk of localKeys) {
       if (lk && lk.key && !WEAK_DEMO_KEYS.has(lk.key.toUpperCase())) {
-        mergedKeysMap.set(lk.id || lk.key, lk);
+        mergedKeysMap.set(lk.key.toUpperCase(), lk);
       }
     }
     // Remote Firestore keys take precedence (authoritative for activations, expirations, boundDeviceId)
     for (const rk of remoteKeys) {
       if (rk && rk.key && !WEAK_DEMO_KEYS.has(String(rk.key).toUpperCase())) {
         const typedKey = rk as AccessKey;
-        mergedKeysMap.set(typedKey.id || typedKey.key, typedKey);
+        const kUpper = typedKey.key.toUpperCase();
+        const existing = mergedKeysMap.get(kUpper);
+        if (!existing || (typedKey.boundDeviceId && !existing.boundDeviceId) || (typedKey.activatedAt && !existing.activatedAt)) {
+          mergedKeysMap.set(kUpper, typedKey);
+        } else {
+          const tRem = typedKey.updatedAt ? new Date(typedKey.updatedAt).getTime() : 0;
+          const tLoc = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+          if (tRem >= tLoc) {
+            mergedKeysMap.set(kUpper, typedKey);
+          }
+        }
       }
     }
 
@@ -628,11 +638,15 @@ async function hydrateFromFirestore() {
     memoryKeys = allKeys;
     fs.writeFileSync(keysFile, JSON.stringify(allKeys, null, 2), 'utf-8');
 
-    // Sync any local-only keys up to Firestore so they never get lost on container restart
+    // Sync all keys up to Firestore under both their id and uppercase key string for O(1) lookup at scale
     const remoteIds = new Set(remoteKeys.map(r => r.id));
     for (const k of allKeys) {
+      const kUpper = k.key.toUpperCase();
       if (!remoteIds.has(k.id)) {
         firestoreSetDoc('accessKeys', k.id, k).catch(() => {});
+      }
+      if (!remoteIds.has(kUpper)) {
+        firestoreSetDoc('accessKeys', kUpper, k).catch(() => {});
       }
     }
 
@@ -758,9 +772,79 @@ function saveKeys(keys: AccessKey[], changedKey?: AccessKey) {
   try {
     fs.writeFileSync(keysFile, JSON.stringify(keys, null, 2), 'utf-8');
   } catch {}
-  if (changedKey && changedKey.id) {
-    firestoreSetDoc('accessKeys', changedKey.id, changedKey).catch(() => {});
+  if (changedKey && changedKey.key) {
+    const kUpper = changedKey.key.toUpperCase();
+    firestoreSetDoc('accessKeys', kUpper, changedKey).catch(() => {});
+    if (changedKey.id && changedKey.id !== kUpper) {
+      firestoreSetDoc('accessKeys', changedKey.id, changedKey).catch(() => {});
+    }
   }
+}
+
+async function persistKeyToFirestore(keyDoc: AccessKey): Promise<void> {
+  if (!keyDoc || !keyDoc.key) return;
+  const kUpper = keyDoc.key.toUpperCase();
+  await firestoreSetDoc('accessKeys', kUpper, keyDoc);
+  if (keyDoc.id && keyDoc.id !== kUpper) {
+    await firestoreSetDoc('accessKeys', keyDoc.id, keyDoc);
+  }
+}
+
+// Fast O(1) single-key lookup & sync from Firestore (supports lakhs/millions of keys without collection scan limits)
+async function findAndSyncSingleKeyFromFirestore(cleanedKey: string): Promise<{ keys: AccessKey[]; keyDoc: AccessKey | undefined }> {
+  let keys = getKeys();
+  const kUpper = cleanedKey.trim().toUpperCase();
+
+  try {
+    // 1. O(1) direct document lookup by key string in Firestore
+    let remoteDoc = await firestoreGetDoc('accessKeys', kUpper);
+
+    // 2. If local key exists with a legacy id (e.g. key_1729...), also check that document id if needed
+    const localMatch = keys.find(k => k.key.toUpperCase() === kUpper);
+    if (!remoteDoc && localMatch && localMatch.id && localMatch.id !== kUpper) {
+      remoteDoc = await firestoreGetDoc('accessKeys', localMatch.id);
+    }
+
+    if (remoteDoc && remoteDoc.key) {
+      const typedRemote = remoteDoc as AccessKey;
+      if (!typedRemote.id) typedRemote.id = localMatch?.id || kUpper;
+
+      const idx = keys.findIndex(k => k.key.toUpperCase() === kUpper);
+      if (idx === -1) {
+        keys.unshift(typedRemote);
+      } else {
+        const existing = keys[idx];
+        // Merge: if either has boundDeviceId or activatedAt, preserve the locked device state
+        const merged: AccessKey = {
+          ...existing,
+          ...typedRemote,
+          boundDeviceId: typedRemote.boundDeviceId || existing.boundDeviceId || null,
+          activatedAt: typedRemote.activatedAt || existing.activatedAt || null,
+          expiresAt: typedRemote.expiresAt || existing.expiresAt || null,
+          activeSessionToken: typedRemote.activeSessionToken || existing.activeSessionToken || null
+        };
+        keys[idx] = merged;
+      }
+      memoryKeys = keys;
+      try {
+        fs.writeFileSync(keysFile, JSON.stringify(keys, null, 2), 'utf-8');
+      } catch {}
+      return { keys, keyDoc: keys.find(k => k.key.toUpperCase() === kUpper) };
+    }
+  } catch (err) {
+    console.warn('findAndSyncSingleKeyFromFirestore O(1) notice:', err);
+  }
+
+  // 3. Fallback: if not found by O(1) ID yet, sync collection and mirror to kUpper
+  let keyDoc = keys.find(k => k.key.toUpperCase() === kUpper);
+  if (!keyDoc) {
+    keys = await syncKeysFromFirestore();
+    keyDoc = keys.find(k => k.key.toUpperCase() === kUpper);
+    if (keyDoc) {
+      firestoreSetDoc('accessKeys', kUpper, keyDoc).catch(() => {});
+    }
+  }
+  return { keys, keyDoc };
 }
 
 async function syncKeysFromFirestore(): Promise<AccessKey[]> {
@@ -928,7 +1012,7 @@ function assignKeyToOrder(order: PaymentOrder): { order: PaymentOrder; keyStr: s
   }
 
   const assignedKeyDoc: AccessKey = {
-    id: `key_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+    id: keyStr,
     key: keyStr,
     status: 'active',
     durationDays,
@@ -1051,15 +1135,14 @@ app.post('/api/verify-key', async (req: Request, res: Response) => {
     return res.status(400).json({ valid: false, message: 'Invalid Access Key' });
   }
 
-  const cleanedKey = rawKey.trim().toUpperCase();
-  let keys = getKeys();
-  let keyDoc = keys.find(k => k.key.toUpperCase() === cleanedKey);
-
-  // If not in local memory yet, sync from Firestore directly
-  if (!keyDoc) {
-    keys = await syncKeysFromFirestore();
-    keyDoc = keys.find(k => k.key.toUpperCase() === cleanedKey);
+  if (!deviceId) {
+    return res.status(400).json({ valid: false, reason: 'device_locked', message: 'Device verification required' });
   }
+
+  const cleanedKey = rawKey.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+
+  // Always check & sync the authoritative key state from Firestore in O(1) so cross-device locks are 100% enforced
+  const { keys, keyDoc } = await findAndSyncSingleKeyFromFirestore(cleanedKey);
 
   if (!keyDoc) {
     return res.status(404).json({ valid: false, reason: 'not_found', message: 'Invalid Access Key' });
@@ -1075,6 +1158,7 @@ app.post('/api/verify-key', async (req: Request, res: Response) => {
   if (keyDoc.expiresAt && new Date(keyDoc.expiresAt).getTime() <= now) {
     keyDoc.status = 'expired';
     saveKeys(keys, keyDoc);
+    await persistKeyToFirestore(keyDoc);
     return res.status(403).json({ valid: false, reason: 'expired', message: 'Access Key has expired' });
   }
 
@@ -1087,35 +1171,33 @@ app.post('/api/verify-key', async (req: Request, res: Response) => {
     });
   }
 
-  // Enforce Strict 1-Device Locking:
-  // If key is already bound to a device:
+  // Enforce Strict 1-Key = 1-Device Locking (1 Key can NEVER unlock 2 devices):
   if (keyDoc.boundDeviceId) {
-    // If entered from a DIFFERENT device:
-    if (deviceId && keyDoc.boundDeviceId !== deviceId) {
+    // If entered from ANY different device, strictly reject!
+    if (keyDoc.boundDeviceId !== deviceId) {
       return res.status(403).json({
         valid: false,
         reason: 'device_locked',
-        message: 'Access Key already used'
+        message: 'Access Key already used on another device'
       });
     }
 
-    // If entered from the SAME device that originally activated it:
-    // Restore and maintain active session on this authorized device!
+    // Entered from the EXACT SAME device that originally activated it:
     keyDoc.lastVerifiedAt = new Date(now).toISOString();
     if (!keyDoc.activeSessionToken) {
       keyDoc.activeSessionToken = `sess_${crypto.randomBytes(20).toString('hex')}`;
     }
     keyDoc.updatedAt = new Date(now).toISOString();
     saveKeys(keys, keyDoc);
-    await firestoreSetDoc('accessKeys', keyDoc.id, keyDoc);
+    await persistKeyToFirestore(keyDoc);
   } else {
-    // Brand new first activation: bind permanently to this 1 device
+    // Brand new first activation: bind permanently to this 1 single device
     const isFirstActivation = !keyDoc.activatedAt;
     if (isFirstActivation) {
       keyDoc.activatedAt = new Date(now).toISOString();
     }
 
-    keyDoc.boundDeviceId = deviceId || `DEV-BOUND-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
+    keyDoc.boundDeviceId = deviceId;
     keyDoc.activeSessionToken = `sess_${crypto.randomBytes(20).toString('hex')}`;
     keyDoc.lastVerifiedAt = new Date(now).toISOString();
     keyDoc.updatedAt = new Date(now).toISOString();
@@ -1133,7 +1215,7 @@ app.post('/api/verify-key', async (req: Request, res: Response) => {
     }
 
     saveKeys(keys, keyDoc);
-    await firestoreSetDoc('accessKeys', keyDoc.id, keyDoc);
+    await persistKeyToFirestore(keyDoc);
 
     if (isFirstActivation) {
       recordAdminLog({
@@ -1174,7 +1256,7 @@ app.post('/api/verify-key', async (req: Request, res: Response) => {
 
 // API: Validate active customer session (checks server-side revocation, deletion, expiry, logout lock, and session reset)
 app.post('/api/session/validate', async (req: Request, res: Response) => {
-  const rawKey = typeof req.body?.key === 'string' ? req.body.key.trim().toUpperCase() : '';
+  const rawKey = typeof req.body?.key === 'string' ? req.body.key.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '') : '';
   const deviceId = typeof req.body?.deviceId === 'string' ? req.body.deviceId.trim() : '';
   const sessionToken = typeof req.body?.sessionToken === 'string' ? req.body.sessionToken.trim() : '';
 
@@ -1182,12 +1264,7 @@ app.post('/api/session/validate', async (req: Request, res: Response) => {
     return res.status(400).json({ valid: false, reason: 'invalid', message: 'Invalid Access Key' });
   }
 
-  let keys = getKeys();
-  let keyDoc = keys.find(k => k.key.toUpperCase() === rawKey);
-  if (!keyDoc) {
-    keys = await syncKeysFromFirestore();
-    keyDoc = keys.find(k => k.key.toUpperCase() === rawKey);
-  }
+  const { keys, keyDoc } = await findAndSyncSingleKeyFromFirestore(rawKey);
   if (!keyDoc) {
     return res.status(403).json({ valid: false, reason: 'deleted', message: 'Access Key has been deleted' });
   }
@@ -1200,6 +1277,7 @@ app.post('/api/session/validate', async (req: Request, res: Response) => {
   if (keyDoc.expiresAt && new Date(keyDoc.expiresAt).getTime() <= now) {
     keyDoc.status = 'expired';
     saveKeys(keys, keyDoc);
+    await persistKeyToFirestore(keyDoc);
     return res.status(403).json({ valid: false, reason: 'expired', message: 'Access Key has expired' });
   }
 
@@ -1214,7 +1292,7 @@ app.post('/api/session/validate', async (req: Request, res: Response) => {
   }
 
   // 1-Device check: If bound to a device, different devices are locked out
-  if (keyDoc.boundDeviceId && deviceId && keyDoc.boundDeviceId !== deviceId) {
+  if (keyDoc.boundDeviceId && (!deviceId || keyDoc.boundDeviceId !== deviceId)) {
     return res.status(403).json({ valid: false, reason: 'device_locked', message: 'Access Key is active on another device' });
   }
 
@@ -1662,7 +1740,7 @@ app.post('/api/admin/keys/generate', async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, message: 'Customer / Reseller Name is required' });
   }
 
-  const count = Math.min(Math.max(1, Number(req.body?.count) || 1), 50);
+  const count = Math.min(Math.max(1, Number(req.body?.count) || 1), 500);
   const durationUnit: 'minutes' | 'hours' | 'days' | 'lifetime' =
     ['minutes', 'hours', 'days', 'lifetime'].includes(req.body?.durationUnit)
       ? req.body.durationUnit
@@ -1702,7 +1780,7 @@ app.post('/api/admin/keys/generate', async (req: Request, res: Response) => {
       keyStr = generateHardCryptographicKey(prefix);
     }
     const keyItem: AccessKey = {
-      id: `key_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+      id: keyStr,
       key: keyStr,
       customerName,
       status: 'active',
@@ -1722,7 +1800,7 @@ app.post('/api/admin/keys/generate', async (req: Request, res: Response) => {
     };
     newKeys.push(keyItem);
     keys.unshift(keyItem);
-    await firestoreSetDoc('accessKeys', keyItem.id, keyItem);
+    await persistKeyToFirestore(keyItem);
 
     recordAdminLog({
       action: 'KEY_GENERATED',
@@ -1742,10 +1820,10 @@ app.post('/api/admin/keys/generate', async (req: Request, res: Response) => {
 app.post('/api/admin/keys/status', async (req: Request, res: Response) => {
   const { id, action } = req.body || {};
   let keys = getKeys();
-  let item = keys.find(k => k.id === id);
+  let item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
   if (!item) {
     keys = await syncKeysFromFirestore();
-    item = keys.find(k => k.id === id);
+    item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
   }
   if (!item) return res.status(404).json({ success: false, message: 'Key not found' });
 
@@ -1753,7 +1831,7 @@ app.post('/api/admin/keys/status', async (req: Request, res: Response) => {
     item.status = 'revoked';
     item.updatedAt = new Date().toISOString();
     saveKeys(keys, item);
-    await firestoreSetDoc('accessKeys', item.id, item);
+    await persistKeyToFirestore(item);
 
     // Immediately revoke active customer access via SSE
     broadcastSSE('key-revoked', { id: item.id, key: item.key, status: 'revoked' });
@@ -1776,7 +1854,7 @@ app.post('/api/admin/keys/status', async (req: Request, res: Response) => {
     }
     item.updatedAt = new Date().toISOString();
     saveKeys(keys, item);
-    await firestoreSetDoc('accessKeys', item.id, item);
+    await persistKeyToFirestore(item);
 
     broadcastSSE('key-updated', { id: item.id, key: item.key, status: item.status });
 
@@ -1799,10 +1877,10 @@ app.post('/api/admin/keys/status', async (req: Request, res: Response) => {
 app.post('/api/admin/keys/toggle', async (req: Request, res: Response) => {
   const { id } = req.body || {};
   let keys = getKeys();
-  let item = keys.find(k => k.id === id);
+  let item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
   if (!item) {
     keys = await syncKeysFromFirestore();
-    item = keys.find(k => k.id === id);
+    item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
   }
   if (!item) return res.status(404).json({ success: false, message: 'Key not found' });
 
@@ -1833,7 +1911,7 @@ app.post('/api/admin/keys/toggle', async (req: Request, res: Response) => {
   }
   item.updatedAt = new Date().toISOString();
   saveKeys(keys, item);
-  await firestoreSetDoc('accessKeys', item.id, item);
+  await persistKeyToFirestore(item);
   res.json({ success: true, key: item, logs: getAdminLogs() });
 });
 
@@ -1849,10 +1927,10 @@ app.post('/api/admin/keys/renew', async (req: Request, res: Response) => {
   }
 
   let keys = getKeys();
-  let item = keys.find(k => k.id === id);
+  let item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
   if (!item) {
     keys = await syncKeysFromFirestore();
-    item = keys.find(k => k.id === id);
+    item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
   }
   if (!item) {
     return res.status(404).json({ success: false, message: 'Key not found' });
@@ -1899,7 +1977,7 @@ app.post('/api/admin/keys/renew', async (req: Request, res: Response) => {
   item.updatedAt = new Date(now).toISOString();
 
   saveKeys(keys, item);
-  await firestoreSetDoc('accessKeys', item.id, item);
+  await persistKeyToFirestore(item);
 
   broadcastSSE('key-updated', { id: item.id, key: item.key, expiresAt: item.expiresAt, status: item.status });
 
@@ -1924,10 +2002,10 @@ app.post('/api/admin/keys/edit', async (req: Request, res: Response) => {
   }
 
   let keys = getKeys();
-  let item = keys.find(k => k.id === id);
+  let item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
   if (!item) {
     keys = await syncKeysFromFirestore();
-    item = keys.find(k => k.id === id);
+    item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
   }
   if (!item) {
     return res.status(404).json({ success: false, message: 'Key not found' });
@@ -1940,7 +2018,7 @@ app.post('/api/admin/keys/edit', async (req: Request, res: Response) => {
   item.updatedAt = new Date().toISOString();
 
   saveKeys(keys, item);
-  await firestoreSetDoc('accessKeys', item.id, item);
+  await persistKeyToFirestore(item);
 
   recordAdminLog({
     action: 'CUSTOMER_UPDATED',
@@ -1958,10 +2036,10 @@ app.post('/api/admin/keys/edit', async (req: Request, res: Response) => {
 app.post('/api/admin/keys/reset-session', async (req: Request, res: Response) => {
   const { id } = req.body || {};
   let keys = getKeys();
-  let item = keys.find(k => k.id === id);
+  let item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
   if (!item) {
     keys = await syncKeysFromFirestore();
-    item = keys.find(k => k.id === id);
+    item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
   }
   if (!item) {
     return res.status(404).json({ success: false, message: 'Key not found' });
@@ -1972,7 +2050,7 @@ app.post('/api/admin/keys/reset-session', async (req: Request, res: Response) =>
   item.updatedAt = new Date().toISOString();
 
   saveKeys(keys, item);
-  await firestoreSetDoc('accessKeys', item.id, item);
+  await persistKeyToFirestore(item);
 
   broadcastSSE('key-session-reset', { id: item.id, key: item.key });
 
@@ -1992,10 +2070,10 @@ app.post('/api/admin/keys/reset-session', async (req: Request, res: Response) =>
 app.delete('/api/admin/keys/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   let keys = getKeys();
-  let target = keys.find(k => k.id === id);
+  let target = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
   if (!target) {
     keys = await syncKeysFromFirestore();
-    target = keys.find(k => k.id === id);
+    target = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
   }
   if (!target) {
     return res.status(404).json({ success: false, message: 'Key not found' });
@@ -2004,9 +2082,13 @@ app.delete('/api/admin/keys/:id', async (req: Request, res: Response) => {
   // Immediately revoke active customer session via SSE
   broadcastSSE('key-revoked', { id: target.id, key: target.key, status: 'deleted' });
 
-  keys = keys.filter(k => k.id !== id);
+  const targetKeyUpper = target.key.toUpperCase();
+  keys = keys.filter(k => k.id !== target!.id && k.key.toUpperCase() !== targetKeyUpper);
   saveKeys(keys);
-  await firestoreDeleteDoc('accessKeys', id);
+  await firestoreDeleteDoc('accessKeys', target.id);
+  if (target.id !== targetKeyUpper) {
+    await firestoreDeleteDoc('accessKeys', targetKeyUpper);
+  }
 
   // Record audit log WITHOUT exposing the deleted raw secret key
   recordAdminLog({

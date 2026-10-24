@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, setDoc, runTransaction } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Language, VerificationResult } from '../types';
 import { translations } from '../translations';
@@ -15,118 +15,156 @@ async function verifyKeyDirectlyWithFirestore(
   message?: string;
   data?: NonNullable<VerificationResult['data']>;
 }> {
-  const q = query(
-    collection(db, 'accessKeys'),
-    where('status', 'in', ['active', 'revoked', 'expired'])
-  );
-  const snap = await getDocs(q);
+  if (!deviceId) {
+    return { valid: false, reason: 'device_locked', message: 'Device verification required' };
+  }
 
-  let foundDocId: string | null = null;
-  let foundData: Record<string, any> | null = null;
+  let targetDocId: string | null = null;
 
-  snap.forEach(docSnap => {
-    if (docSnap.exists()) {
-      const d = docSnap.data();
-      if (String(d.key || '').trim().toUpperCase() === cleanKey) {
-        foundDocId = docSnap.id;
-        foundData = { ...d, id: docSnap.id };
-      }
+  // 1. O(1) Direct lookup by key string (supports lakhs/millions of keys instantly)
+  try {
+    const directSnap = await getDoc(doc(db, 'accessKeys', cleanKey));
+    if (directSnap.exists()) {
+      targetDocId = directSnap.id;
     }
-  });
+  } catch {}
 
-  if (!foundDocId || !foundData) {
+  // 2. Fallback for older keys whose Firestore doc ID was key_...
+  if (!targetDocId) {
+    const q = query(
+      collection(db, 'accessKeys'),
+      where('status', 'in', ['active', 'revoked', 'expired'])
+    );
+    const snap = await getDocs(q);
+    snap.forEach(docSnap => {
+      if (docSnap.exists()) {
+        const d = docSnap.data();
+        const kVal = String(d.key || '').trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+        if (kVal === cleanKey) {
+          targetDocId = docSnap.id;
+        }
+      }
+    });
+  }
+
+  if (!targetDocId) {
     return { valid: false, reason: 'not_found', message: 'Invalid Access Key' };
   }
 
-  const keyDoc = foundData as Record<string, any>;
+  const docRef = doc(db, 'accessKeys', targetDocId);
 
-  if (keyDoc.status === 'revoked') {
-    return { valid: false, reason: 'revoked', message: 'Access Key has been revoked' };
-  }
-
-  const now = Date.now();
-  if (keyDoc.expiresAt && new Date(keyDoc.expiresAt).getTime() <= now) {
-    try {
-      await setDoc(doc(db, 'accessKeys', foundDocId), { status: 'expired' }, { merge: true });
-    } catch {}
-    return { valid: false, reason: 'expired', message: 'Access Key has expired' };
-  }
-
-  if (keyDoc.activeSessionToken && String(keyDoc.activeSessionToken).startsWith('LOCKED_LOGGED_OUT_')) {
-    return { valid: false, reason: 'logged_out', message: 'Access Key already used' };
-  }
-
-  const nowIso = new Date(now).toISOString();
-  let activatedAt: string | null = keyDoc.activatedAt || null;
-  let expiresAt: string | null = keyDoc.expiresAt || null;
-  let boundDeviceId: string | null = keyDoc.boundDeviceId || null;
-  let activeSessionToken: string | null = keyDoc.activeSessionToken || null;
-
-  if (boundDeviceId) {
-    if (deviceId && boundDeviceId !== deviceId) {
-      return { valid: false, reason: 'device_locked', message: 'Access Key already used' };
+  // 3. Atomic Firestore Transaction to guarantee 1 Key NEVER unlocks 2 devices simultaneously
+  const txResult = await runTransaction(db, async (transaction) => {
+    const docSnap = await transaction.get(docRef);
+    if (!docSnap.exists()) {
+      return { valid: false, reason: 'not_found', message: 'Invalid Access Key' };
     }
-    if (!activeSessionToken) {
+
+    const keyDoc = docSnap.data() as Record<string, any>;
+
+    if (keyDoc.status === 'revoked') {
+      return { valid: false, reason: 'revoked', message: 'Access Key has been revoked' };
+    }
+
+    const now = Date.now();
+    if (keyDoc.expiresAt && new Date(keyDoc.expiresAt).getTime() <= now) {
+      transaction.set(
+        docRef,
+        {
+          key: String(keyDoc.key || cleanKey),
+          status: 'expired',
+          durationDays: Number(keyDoc.durationDays) || 30,
+          createdAt: String(keyDoc.createdAt || new Date(now).toISOString())
+        },
+        { merge: true }
+      );
+      return { valid: false, reason: 'expired', message: 'Access Key has expired' };
+    }
+
+    if (keyDoc.activeSessionToken && String(keyDoc.activeSessionToken).startsWith('LOCKED_LOGGED_OUT_')) {
+      return { valid: false, reason: 'logged_out', message: 'Access Key already used' };
+    }
+
+    const nowIso = new Date(now).toISOString();
+    let activatedAt: string | null = keyDoc.activatedAt || null;
+    let expiresAt: string | null = keyDoc.expiresAt || null;
+    let boundDeviceId: string | null = keyDoc.boundDeviceId || null;
+    let activeSessionToken: string | null = keyDoc.activeSessionToken || null;
+
+    // Strict 1-Key = 1-Device check inside atomic transaction
+    if (boundDeviceId) {
+      if (boundDeviceId !== deviceId) {
+        return { valid: false, reason: 'device_locked', message: 'Access Key already used on another device' };
+      }
+      if (!activeSessionToken) {
+        activeSessionToken = `sess_${now}_${Math.random().toString(36).slice(2, 12)}`;
+      }
+    } else {
+      if (!activatedAt) {
+        activatedAt = nowIso;
+      }
+      boundDeviceId = deviceId;
       activeSessionToken = `sess_${now}_${Math.random().toString(36).slice(2, 12)}`;
+
+      const durationDaysNum = Number(keyDoc.durationDays) || 0;
+      const computedDurationMs = keyDoc.durationMs
+        ? Number(keyDoc.durationMs)
+        : durationDaysNum > 0
+        ? durationDaysNum * 24 * 60 * 60 * 1000
+        : 0;
+
+      if (computedDurationMs > 0 && !expiresAt) {
+        expiresAt = new Date(now + computedDurationMs).toISOString();
+      }
     }
-  } else {
-    if (!activatedAt) {
-      activatedAt = nowIso;
-    }
-    boundDeviceId = deviceId || `DEV-BOUND-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
-    activeSessionToken = `sess_${now}_${Math.random().toString(36).slice(2, 12)}`;
 
-    const durationDaysNum = Number(keyDoc.durationDays) || 0;
-    const computedDurationMs = keyDoc.durationMs
-      ? Number(keyDoc.durationMs)
-      : durationDaysNum > 0
-      ? durationDaysNum * 24 * 60 * 60 * 1000
-      : 0;
-
-    if (computedDurationMs > 0 && !expiresAt) {
-      expiresAt = new Date(now + computedDurationMs).toISOString();
-    }
-  }
-
-  const updatedFields = {
-    key: String(keyDoc.key || cleanKey),
-    status: 'active',
-    durationDays: Number(keyDoc.durationDays) || 30,
-    createdAt: String(keyDoc.createdAt || nowIso),
-    activatedAt,
-    expiresAt,
-    boundDeviceId,
-    activeSessionToken,
-    lastVerifiedAt: nowIso,
-    updatedAt: nowIso
-  };
-
-  try {
-    await setDoc(doc(db, 'accessKeys', foundDocId), updatedFields, { merge: true });
-  } catch (err) {
-    console.warn('Firestore activation update warning:', err);
-  }
-
-  const remainingMs = expiresAt ? Math.max(0, new Date(expiresAt).getTime() - now) : null;
-
-  return {
-    valid: true,
-    message: 'Access Granted',
-    data: {
+    const updatedFields = {
+      id: targetDocId,
       key: String(keyDoc.key || cleanKey),
       customerName: keyDoc.customerName || 'Customer',
+      status: 'active',
       durationDays: Number(keyDoc.durationDays) || 30,
       durationUnit: keyDoc.durationUnit || (Number(keyDoc.durationDays) === 0 ? 'lifetime' : 'days'),
       durationValue: keyDoc.durationValue ?? keyDoc.durationDays ?? 30,
-      status: 'active',
+      durationMs: keyDoc.durationMs ?? (Number(keyDoc.durationDays || 30) * 24 * 60 * 60 * 1000),
+      createdAt: String(keyDoc.createdAt || nowIso),
       activatedAt,
       expiresAt,
-      remainingMs,
       boundDeviceId,
-      sessionToken: activeSessionToken || undefined,
+      activeSessionToken,
+      lastVerifiedAt: nowIso,
+      updatedAt: nowIso,
       notes: keyDoc.notes || ''
+    };
+
+    transaction.set(docRef, updatedFields, { merge: true });
+    if (targetDocId !== cleanKey) {
+      transaction.set(doc(db, 'accessKeys', cleanKey), updatedFields, { merge: true });
     }
-  };
+
+    const remainingMs = expiresAt ? Math.max(0, new Date(expiresAt).getTime() - now) : null;
+
+    return {
+      valid: true,
+      message: 'Access Granted',
+      data: {
+        key: String(keyDoc.key || cleanKey),
+        customerName: keyDoc.customerName || 'Customer',
+        durationDays: Number(keyDoc.durationDays) || 30,
+        durationUnit: keyDoc.durationUnit || (Number(keyDoc.durationDays) === 0 ? 'lifetime' : 'days'),
+        durationValue: keyDoc.durationValue ?? keyDoc.durationDays ?? 30,
+        status: 'active' as const,
+        activatedAt,
+        expiresAt,
+        remainingMs,
+        boundDeviceId,
+        sessionToken: activeSessionToken || undefined,
+        notes: keyDoc.notes || ''
+      }
+    };
+  });
+
+  return txResult;
 }
 
 interface AccessKeyFormProps {

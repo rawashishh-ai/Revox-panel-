@@ -462,7 +462,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       return;
     }
 
-    const quantity = Math.min(Math.max(1, Number(genCustomCount) || 1), 50);
+    const quantity = Math.min(Math.max(1, Number(genCustomCount) || 1), 500);
 
     setGenerating(true);
     let generatedSuccessfully = false;
@@ -489,10 +489,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
       if (res.ok && data?.success && Array.isArray(data.generated)) {
         const newlyCreated: AccessKey[] = data.generated;
-        // Also persist every newly generated key directly to Firestore from client so it is 100% synced everywhere
+        // Also persist every newly generated key directly to Firestore under its uppercase key string for O(1) cross-device verification
         for (const k of newlyCreated) {
+          const kUpper = k.key.toUpperCase();
           try {
-            await setDoc(doc(db, 'accessKeys', k.id), k);
+            await setDoc(doc(db, 'accessKeys', kUpper), k);
+            if (k.id && k.id !== kUpper) {
+              await setDoc(doc(db, 'accessKeys', k.id), k);
+            }
           } catch {}
         }
         setGeneratedBatch(newlyCreated);
@@ -527,7 +531,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         const fallbackBatch: AccessKey[] = [];
         for (let i = 0; i < quantity; i++) {
           const uniqueKey = generateClientCryptoKey('RVX');
-          const keyId = `key_${nowMs}_${Math.random().toString(36).slice(2, 8)}`;
+          const keyId = uniqueKey;
           const keyDocData: AccessKey = {
             id: keyId,
             key: uniqueKey,
@@ -578,6 +582,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     if (actionBusyId) return;
     setActionBusyId(keyItem.id);
     let success = false;
+    const kUpper = keyItem.key.toUpperCase();
     try {
       const res = await adminFetch('/api/admin/keys/status', {
         method: 'POST',
@@ -588,6 +593,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       try { data = JSON.parse(text); } catch {}
       if (res.ok && data?.success && data.key) {
         setKeys(prev => prev.map(k => (k.id === keyItem.id ? data.key : k)));
+        try {
+          await setDoc(doc(db, 'accessKeys', kUpper), data.key, { merge: true });
+          if (keyItem.id !== kUpper) {
+            await setDoc(doc(db, 'accessKeys', keyItem.id), data.key, { merge: true });
+          }
+        } catch {}
         success = true;
       }
     } catch {}
@@ -595,7 +606,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     if (!success) {
       try {
         const newStatus = action === 'deactivate' ? 'revoked' : 'active';
-        await updateDoc(doc(db, 'accessKeys', keyItem.id), { status: newStatus });
+        await setDoc(doc(db, 'accessKeys', kUpper), { ...keyItem, status: newStatus }, { merge: true });
+        if (keyItem.id !== kUpper) {
+          await updateDoc(doc(db, 'accessKeys', keyItem.id), { status: newStatus }).catch(() => {});
+        }
         setKeys(prev => prev.map(k => (k.id === keyItem.id ? { ...k, status: newStatus } : k)));
         success = true;
       } catch (err: any) {
@@ -613,6 +627,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     if (actionBusyId) return;
     setActionBusyId(keyItem.id);
     let success = false;
+    const kUpper = keyItem.key.toUpperCase();
     try {
       const res = await adminFetch('/api/admin/keys/reset-session', {
         method: 'POST',
@@ -623,16 +638,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       try { data = JSON.parse(text); } catch {}
       if (res.ok && data?.success && data.key) {
         setKeys(prev => prev.map(k => (k.id === keyItem.id ? data.key : k)));
+        try {
+          await setDoc(doc(db, 'accessKeys', kUpper), data.key, { merge: true });
+          if (keyItem.id !== kUpper) {
+            await setDoc(doc(db, 'accessKeys', keyItem.id), data.key, { merge: true });
+          }
+        } catch {}
         success = true;
       }
     } catch {}
 
     if (!success) {
       try {
-        await updateDoc(doc(db, 'accessKeys', keyItem.id), {
+        const resetFields = {
+          ...keyItem,
           boundDeviceId: null,
           activeSessionToken: null
-        });
+        };
+        await setDoc(doc(db, 'accessKeys', kUpper), resetFields, { merge: true });
+        if (keyItem.id !== kUpper) {
+          await updateDoc(doc(db, 'accessKeys', keyItem.id), {
+            boundDeviceId: null,
+            activeSessionToken: null
+          }).catch(() => {});
+        }
         setKeys(prev =>
           prev.map(k =>
             k.id === keyItem.id
@@ -656,6 +685,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     if (!deleteTargetKey || deletingKey) return;
     setDeletingKey(true);
     let success = false;
+    const kUpper = deleteTargetKey.key.toUpperCase();
     try {
       const res = await adminFetch(`/api/admin/keys/${deleteTargetKey.id}`, {
         method: 'DELETE'
@@ -664,13 +694,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       let data: any = null;
       try { data = JSON.parse(text); } catch {}
       if (res.ok && data?.success) {
+        try {
+          await deleteDoc(doc(db, 'accessKeys', kUpper));
+          if (deleteTargetKey.id !== kUpper) {
+            await deleteDoc(doc(db, 'accessKeys', deleteTargetKey.id));
+          }
+        } catch {}
         success = true;
       }
     } catch {}
 
     if (!success) {
       try {
-        await deleteDoc(doc(db, 'accessKeys', deleteTargetKey.id));
+        await deleteDoc(doc(db, 'accessKeys', kUpper));
+        if (deleteTargetKey.id !== kUpper) {
+          await deleteDoc(doc(db, 'accessKeys', deleteTargetKey.id)).catch(() => {});
+        }
         success = true;
       } catch (err: any) {
         showToast(err?.message || 'Delete failed', 'error');
@@ -678,8 +717,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
 
     if (success) {
-      setKeys(prev => prev.filter(k => k.id !== deleteTargetKey.id));
-      setGeneratedBatch(prev => prev.filter(k => k.id !== deleteTargetKey.id));
+      setKeys(prev => prev.filter(k => k.id !== deleteTargetKey.id && k.key.toUpperCase() !== kUpper));
+      setGeneratedBatch(prev => prev.filter(k => k.id !== deleteTargetKey.id && k.key.toUpperCase() !== kUpper));
       setDeleteTargetKey(null);
       showToast('Key Deleted', 'success');
     }

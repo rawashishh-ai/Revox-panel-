@@ -14,7 +14,7 @@ import { AdminPanel } from './components/AdminPanel';
 import { GetKeyModal } from './components/GetKeyModal';
 import { IntroVideoScreen } from './components/IntroVideoScreen';
 import { db, testConnection } from './firebase';
-import { doc, onSnapshot, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, collection, query, where, getDocs } from 'firebase/firestore';
 import { getOrCreateDeviceId } from './deviceId';
 
 const CACHED_SETTINGS_STORAGE_KEY = 'rvx_published_settings_v3';
@@ -39,17 +39,20 @@ export default function App() {
     return null;
   });
 
-  // Remember if user has already passed intro or is already unlocked
+  // If user is unlocked, open directly on the unlocked dashboard; otherwise always start from Gameplay screen
   const [hasPassedIntro, setHasPassedIntro] = useState<boolean>(() => {
     try {
-      const storedKey =
+      const stored =
         localStorage.getItem('rvx_activated_key') ||
         localStorage.getItem('sltx_activated_key');
-      if (storedKey) return true;
-      return localStorage.getItem('rvx_has_passed_intro') === 'true';
-    } catch {
-      return false;
-    }
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (!parsed.expiresAt || new Date(parsed.expiresAt).getTime() > Date.now()) {
+          return true;
+        }
+      }
+    } catch {}
+    return false;
   });
   const [manualGameplayView, setManualGameplayView] = useState<boolean>(false);
 
@@ -351,33 +354,52 @@ export default function App() {
 
     const validateFirestoreSessionFallback = async (cleanKey: string) => {
       try {
-        const q = query(collection(db, 'accessKeys'), where('status', 'in', ['active', 'revoked', 'expired']));
-        const snap = await getDocs(q);
-        if (cancelled) return;
+        const deviceId = getOrCreateDeviceId();
         let found: any = null;
-        snap.forEach((docSnap) => {
-          const d = docSnap.data();
-          const kVal = String(d.key || '').trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
-          if (kVal === cleanKey) {
-            found = { ...d, id: d.id || docSnap.id };
+
+        // 1. O(1) direct document lookup by key string
+        try {
+          const directSnap = await getDoc(doc(db, 'accessKeys', cleanKey));
+          if (directSnap.exists()) {
+            found = { ...directSnap.data(), id: directSnap.id };
           }
-        });
+        } catch {}
+
+        // 2. Fallback query for older keys
+        let snapEmpty = false;
+        if (!found) {
+          const q = query(collection(db, 'accessKeys'), where('status', 'in', ['active', 'revoked', 'expired']));
+          const snap = await getDocs(q);
+          if (cancelled) return;
+          snapEmpty = snap.empty;
+          snap.forEach((docSnap) => {
+            const d = docSnap.data();
+            const kVal = String(d.key || '').trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+            if (kVal === cleanKey) {
+              found = { ...d, id: d.id || docSnap.id };
+            }
+          });
+        }
+
+        if (cancelled) return;
 
         if (!found) {
-          // If Firestore is reachable and key was deleted from Firestore
-          if (!snap.empty) {
+          if (!snapEmpty) {
             localStorage.removeItem('rvx_activated_key');
             localStorage.removeItem('sltx_activated_key');
             setUnlockedKeyData(null);
+            setHasPassedIntro(false);
           }
           return;
         }
 
         const isExpired = found.expiresAt ? new Date(found.expiresAt).getTime() <= Date.now() : false;
-        if (found.status === 'revoked' || found.status === 'expired' || isExpired) {
+        const isDeviceMismatch = found.boundDeviceId && deviceId && found.boundDeviceId !== deviceId;
+        if (found.status === 'revoked' || found.status === 'expired' || isExpired || isDeviceMismatch) {
           localStorage.removeItem('rvx_activated_key');
           localStorage.removeItem('sltx_activated_key');
           setUnlockedKeyData(null);
+          setHasPassedIntro(false);
           return;
         }
 
@@ -431,17 +453,19 @@ export default function App() {
 
         if (res.status === 403 || res.status === 400) {
           const errData = await res.json().catch(() => null);
-          // Only invalidate session if key was explicitly expired, revoked, deleted, or closed
+          // Only invalidate session if key was explicitly expired, revoked, deleted, closed, or locked to another device
           if (
             errData &&
             (errData.reason === 'expired' ||
               errData.reason === 'revoked' ||
               errData.reason === 'deleted' ||
-              errData.reason === 'logged_out')
+              errData.reason === 'logged_out' ||
+              errData.reason === 'device_locked')
           ) {
             localStorage.removeItem('rvx_activated_key');
             localStorage.removeItem('sltx_activated_key');
             setUnlockedKeyData(null);
+            setHasPassedIntro(false);
             return;
           }
         }
@@ -545,6 +569,23 @@ export default function App() {
     version: 1
   };
 
+  // Browser Back button handler:
+  // - If user has NOT unlocked a key and presses Back on Key Entry screen, return to Gameplay screen!
+  // - If user HAS unlocked a key and opened manual Gameplay view, pressing Back returns to Unlocked Dashboard!
+  useEffect(() => {
+    const handlePopState = () => {
+      if (unlockedKeyData) {
+        setManualGameplayView(false);
+        setHasPassedIntro(true);
+      } else {
+        setHasPassedIntro(false);
+        setManualGameplayView(false);
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [unlockedKeyData]);
+
   const showIntroVideoGate =
     manualGameplayView ||
     (!unlockedKeyData &&
@@ -567,9 +608,17 @@ export default function App() {
           type="button"
           onClick={() => {
             if (showIntroVideoGate) {
+              if (!unlockedKeyData) {
+                try {
+                  window.history.pushState({ rvxView: 'key-entry' }, '');
+                } catch {}
+              }
               setHasPassedIntro(true);
               setManualGameplayView(false);
             } else {
+              try {
+                window.history.pushState({ rvxView: 'gameplay' }, '');
+              } catch {}
               setHasPassedIntro(false);
               setManualGameplayView(true);
             }
@@ -618,9 +667,11 @@ export default function App() {
               settings={activeSettings}
               lang={lang}
               onContinue={() => {
-                try {
-                  localStorage.setItem('rvx_has_passed_intro', 'true');
-                } catch {}
+                if (!unlockedKeyData) {
+                  try {
+                    window.history.pushState({ rvxView: 'key-entry' }, '');
+                  } catch {}
+                }
                 setHasPassedIntro(true);
                 setManualGameplayView(false);
               }}
@@ -647,6 +698,7 @@ export default function App() {
                   }
                   localStorage.removeItem('rvx_activated_key');
                   localStorage.removeItem('sltx_activated_key');
+                  localStorage.removeItem('rvx_has_passed_intro');
                 } catch {}
                 setUnlockedKeyData(null);
               }}
@@ -673,8 +725,9 @@ export default function App() {
                 try {
                   localStorage.setItem('rvx_activated_key', JSON.stringify(data));
                   localStorage.setItem('sltx_activated_key', JSON.stringify(data));
-                  localStorage.setItem('rvx_has_passed_intro', 'true');
                 } catch {}
+                setHasPassedIntro(true);
+                setManualGameplayView(false);
                 setUnlockedKeyData(data);
               }}
             />

@@ -2,6 +2,56 @@
   {
     "action": "KEY_DELETED",
     "label": "Key deleted",
+    "customerName": "CROSS_DEVICE_TEST",
+    "maskedKey": "RVX-G3C4-••••-WH68",
+    "keyId": "RVX-G3C4-3E8A-WH68",
+    "details": "Deleted access key for CROSS_DEVICE_TEST",
+    "id": "log_1792835803298_e47205",
+    "timestamp": "2026-10-24T09:56:43.298Z"
+  },
+  {
+    "action": "KEY_ACTIVATED",
+    "label": "Key activated",
+    "customerName": "CROSS_DEVICE_TEST",
+    "maskedKey": "RVX-G3C4-3E8A-WH68",
+    "keyId": "RVX-G3C4-3E8A-WH68",
+    "details": "First activation by CROSS_DEVICE_TEST",
+    "id": "log_1792835803162_f8baf6",
+    "timestamp": "2026-10-24T09:56:43.162Z"
+  },
+  {
+    "action": "KEY_GENERATED",
+    "label": "Key generated",
+    "customerName": "CROSS_DEVICE_TEST",
+    "maskedKey": "RVX-G3C4-3E8A-WH68",
+    "keyId": "RVX-G3C4-3E8A-WH68",
+    "details": "1 DAYS for CROSS_DEVICE_TEST",
+    "id": "log_1792835803102_db1b2d",
+    "timestamp": "2026-10-24T09:56:43.102Z"
+  },
+  {
+    "action": "KEY_REACTIVATED",
+    "label": "Key activated",
+    "customerName": "day",
+    "maskedKey": "RVX-9WWY-EHQ6-CYW2",
+    "keyId": "key_1792834819981_rnog5w",
+    "details": "Reactivated key for day",
+    "id": "log_1792835256834_bbb028",
+    "timestamp": "2026-10-24T09:47:36.834Z"
+  },
+  {
+    "action": "KEY_DEACTIVATED",
+    "label": "Key deactivated",
+    "customerName": "day",
+    "maskedKey": "RVX-9WWY-EHQ6-CYW2",
+    "keyId": "key_1792834819981_rnog5w",
+    "details": "Deactivated key for day",
+    "id": "log_1792835255205_fb1fdf",
+    "timestamp": "2026-10-24T09:47:35.205Z"
+  },
+  {
+    "action": "KEY_DELETED",
+    "label": "Key deleted",
     "customerName": "TEST_VERIFY",
     "maskedKey": "RVX-VZB7-••••-97CM",
     "keyId": "key_1792832611922_abb6f15e",
