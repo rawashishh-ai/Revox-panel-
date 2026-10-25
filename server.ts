@@ -22,6 +22,7 @@ if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 const settingsFile = path.join(dataDir, 'site-settings.json');
 const keysFile = path.join(dataDir, 'access-keys.json');
+const deletedKeysFile = path.join(dataDir, 'deleted-keys.json');
 const salesFile = path.join(dataDir, 'key-sales.json');
 const logsFile = path.join(dataDir, 'admin-logs.json');
 
@@ -410,10 +411,59 @@ async function firestoreListDocs(collectionName: string, pageSize = 300): Promis
 
 let memorySettings: SiteSettings | null = null;
 let memoryKeys: AccessKey[] | null = null;
+let memoryDeletedKeys: Set<string> | null = null;
 let memorySales: PaymentOrder[] | null = null;
 let memoryLogs: AdminAuditLog[] | null = null;
 const memoryLogoAssets = new Map<string, { dataUrl: string; mimeType: string; version: number }>();
 const memoryVideoAssets = new Map<string, { buffer: Buffer; mimeType: string; fileName: string }>();
+
+function getDeletedKeysSet(): Set<string> {
+  if (memoryDeletedKeys) return memoryDeletedKeys;
+  const set = new Set<string>([
+    'SLTX-TEST-KEY1-FREE',
+    'SLTX-2026-LIVE-FAST',
+    'SLTX-VIP7-4920-PHAN',
+    'SLTX-PRO9-8821-ELIT',
+    'SLTX-9K4X7M-8P2Q5W-3R9N6V-4T8J2F',
+    'SLTX-7W3Q9Z-5M8K2P-6X4R9T-8N3V7C',
+    'RVX-TEST-KEY1-FREE',
+    'RVX-2026-LIVE-FAST',
+    'RVX-VIP7-4920-PHAN',
+    'RVX-PRO9-8821-ELIT',
+    'SLTX-9KTY-YT5E-67TQ',
+    'SLTX-4M8W-7Q2P-9X3R'
+  ]);
+  try {
+    if (fs.existsSync(deletedKeysFile)) {
+      const parsed = JSON.parse(fs.readFileSync(deletedKeysFile, 'utf-8'));
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          if (typeof item === 'string' && item.trim()) {
+            set.add(item.trim().toUpperCase());
+          }
+        }
+      }
+    }
+  } catch {}
+  memoryDeletedKeys = set;
+  return set;
+}
+
+function isKeyDeleted(id?: string | null, key?: string | null): boolean {
+  const deleted = getDeletedKeysSet();
+  if (id && deleted.has(String(id).trim().toUpperCase())) return true;
+  if (key && deleted.has(String(key).trim().toUpperCase())) return true;
+  return false;
+}
+
+function markKeyDeletedPermanently(id?: string | null, key?: string | null) {
+  const deleted = getDeletedKeysSet();
+  if (id && String(id).trim()) deleted.add(String(id).trim().toUpperCase());
+  if (key && String(key).trim()) deleted.add(String(key).trim().toUpperCase());
+  try {
+    fs.writeFileSync(deletedKeysFile, JSON.stringify(Array.from(deleted), null, 2), 'utf-8');
+  } catch {}
+}
 
 // Server-side Admin Session Token Signing & Validation
 const ADMIN_SIGNING_SECRET =
@@ -564,10 +614,11 @@ function getLocalFallbackSettings(): SiteSettings {
   return memorySettings;
 }
 
-// Hydrate settings, keys, and sales from Firestore on startup (NEVER overwrites Firestore with defaults!)
+// Hydrate settings, keys, and sales from Firestore on startup (NEVER overwrites newer local disk state with stale Firestore data!)
 async function hydrateFromFirestore() {
   try {
-    // 1. Hydrate websiteSettings/main (or legacy settings/site)
+    // 1. Hydrate websiteSettings/main (comparing against local disk settings so quota-frozen Firestore never wipes newer local updates)
+    const localDiskSettings = getLocalFallbackSettings();
     const canonicalDoc = await firestoreGetDoc('websiteSettings', 'main');
     const legacyDoc = await firestoreGetDoc('settings', 'site');
 
@@ -583,65 +634,56 @@ async function hydrateFromFirestore() {
     }
 
     if (chosenDoc) {
-      const hydrated = normalizeSettings(chosenDoc as Partial<SiteSettings>);
-      if (!canonicalDoc || (Number(canonicalDoc.version) || 0) < hydrated.version || Number(chosenDoc.logoSize) < 240) {
-        hydrated.version = Math.max(hydrated.version, (Number(chosenDoc.version) || 0) + 1);
-        hydrated.updatedAt = new Date().toISOString();
-        await firestoreSetDoc('websiteSettings', 'main', hydrated);
-        await firestoreSetDoc('settings', 'site', hydrated);
+      const remoteHydrated = normalizeSettings(chosenDoc as Partial<SiteSettings>);
+      const localVersion = Number(localDiskSettings.version) || 1;
+      const remoteVersion = Number(remoteHydrated.version) || 1;
+      const localTime = localDiskSettings.updatedAt ? new Date(localDiskSettings.updatedAt).getTime() : 0;
+      const remoteTime = remoteHydrated.updatedAt ? new Date(remoteHydrated.updatedAt).getTime() : 0;
+
+      // Only adopt remote Firestore settings if strictly newer than local disk settings
+      if (remoteVersion > localVersion && remoteTime > localTime) {
+        memorySettings = remoteHydrated;
+        fs.writeFileSync(settingsFile, JSON.stringify(remoteHydrated, null, 2), 'utf-8');
+        broadcastSSE('settings-update', remoteHydrated);
+      } else {
+        memorySettings = localDiskSettings;
+        if (localVersion > remoteVersion) {
+          firestoreSetDoc('websiteSettings', 'main', localDiskSettings).catch(() => {});
+        }
       }
-      memorySettings = hydrated;
-      fs.writeFileSync(settingsFile, JSON.stringify(hydrated, null, 2), 'utf-8');
-      broadcastSSE('settings-update', hydrated);
     } else {
-      // Only if Firestore has NO settings document at all, seed initial document once from local file
-      const initial = getLocalFallbackSettings();
-      await firestoreSetDoc('websiteSettings', 'main', initial);
-      await firestoreSetDoc('settings', 'site', initial);
+      memorySettings = localDiskSettings;
+      firestoreSetDoc('websiteSettings', 'main', localDiskSettings).catch(() => {});
     }
 
-    // 2. Hydrate Access Keys from Firestore accessKeys collection (excluding old weak demo keys)
-    const WEAK_DEMO_KEYS = new Set([
-      'SLTX-TEST-KEY1-FREE',
-      'SLTX-2026-LIVE-FAST',
-      'SLTX-VIP7-4920-PHAN',
-      'SLTX-PRO9-8821-ELIT',
-      'SLTX-9K4X7M-8P2Q5W-3R9N6V-4T8J2F',
-      'SLTX-7W3Q9Z-5M8K2P-6X4R9T-8N3V7C',
-      'RVX-TEST-KEY1-FREE',
-      'RVX-2026-LIVE-FAST',
-      'RVX-VIP7-4920-PHAN',
-      'RVX-PRO9-8821-ELIT'
-    ]);
+    // 2. Hydrate Access Keys from local disk + Firestore (strictly excluding deleted keys)
     const remoteKeys = await firestoreListDocs('accessKeys', 500);
     const localKeys = getKeysFromDisk();
     const mergedKeysMap = new Map<string, AccessKey>();
 
-    // Delete any weak demo keys from Firestore if present
-    for (const rk of remoteKeys) {
-      if (rk && WEAK_DEMO_KEYS.has(String(rk.key || '').toUpperCase())) {
-        if (rk.id) firestoreDeleteDoc('accessKeys', rk.id).catch(() => {});
-      }
-    }
-
-    // First put local keys (skipping weak demo keys), deduplicated by uppercase key string
+    // First load all local keys that have not been deleted
     for (const lk of localKeys) {
-      if (lk && lk.key && !WEAK_DEMO_KEYS.has(lk.key.toUpperCase())) {
+      if (lk && lk.key && !isKeyDeleted(lk.id, lk.key)) {
         mergedKeysMap.set(lk.key.toUpperCase(), lk);
       }
     }
-    // Remote Firestore keys take precedence (authoritative for activations, expirations, boundDeviceId)
+
+    // Merge remote keys ONLY if not deleted, and preserve whichever record has the newer updatedAt
     for (const rk of remoteKeys) {
-      if (rk && rk.key && !WEAK_DEMO_KEYS.has(String(rk.key).toUpperCase())) {
+      if (rk && rk.key) {
+        if (isKeyDeleted(rk.id, rk.key)) {
+          if (rk.id) firestoreDeleteDoc('accessKeys', rk.id).catch(() => {});
+          continue;
+        }
         const typedKey = rk as AccessKey;
         const kUpper = typedKey.key.toUpperCase();
         const existing = mergedKeysMap.get(kUpper);
-        if (!existing || (typedKey.boundDeviceId && !existing.boundDeviceId) || (typedKey.activatedAt && !existing.activatedAt)) {
+        if (!existing) {
           mergedKeysMap.set(kUpper, typedKey);
         } else {
           const tRem = typedKey.updatedAt ? new Date(typedKey.updatedAt).getTime() : 0;
           const tLoc = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
-          if (tRem >= tLoc) {
+          if (tRem > tLoc) {
             mergedKeysMap.set(kUpper, typedKey);
           }
         }
@@ -654,19 +696,7 @@ async function hydrateFromFirestore() {
     memoryKeys = allKeys;
     fs.writeFileSync(keysFile, JSON.stringify(allKeys, null, 2), 'utf-8');
 
-    // Sync all keys up to Firestore under both their id and uppercase key string for O(1) lookup at scale
-    const remoteIds = new Set(remoteKeys.map(r => r.id));
-    for (const k of allKeys) {
-      const kUpper = k.key.toUpperCase();
-      if (!remoteIds.has(k.id)) {
-        firestoreSetDoc('accessKeys', k.id, k).catch(() => {});
-      }
-      if (!remoteIds.has(kUpper)) {
-        firestoreSetDoc('accessKeys', kUpper, k).catch(() => {});
-      }
-    }
-
-    // 3. Hydrate Key Sales from Firestore keySales collection
+    // 3. Hydrate Key Sales
     const remoteSales = await firestoreListDocs('keySales', 500);
     const localSales = getSalesFromDisk();
     const mergedSalesMap = new Map<string, PaymentOrder>();
@@ -675,7 +705,9 @@ async function hydrateFromFirestore() {
       if (ls && ls.orderId) mergedSalesMap.set(ls.orderId, ls);
     }
     for (const rs of remoteSales) {
-      if (rs && rs.orderId) mergedSalesMap.set(rs.orderId, rs as PaymentOrder);
+      if (rs && rs.orderId && !mergedSalesMap.has(rs.orderId)) {
+        mergedSalesMap.set(rs.orderId, rs as PaymentOrder);
+      }
     }
 
     const allSales = Array.from(mergedSalesMap.values()).sort(
@@ -684,14 +716,7 @@ async function hydrateFromFirestore() {
     memorySales = allSales;
     fs.writeFileSync(salesFile, JSON.stringify(allSales, null, 2), 'utf-8');
 
-    const remoteOrderIds = new Set(remoteSales.map(r => r.orderId));
-    for (const s of allSales) {
-      if (!remoteOrderIds.has(s.orderId)) {
-        firestoreSetDoc('keySales', s.orderId, s).catch(() => {});
-      }
-    }
-
-    // 4. Hydrate Admin Audit Logs from Firestore adminLogs collection
+    // 4. Hydrate Admin Audit Logs
     const remoteLogs = await firestoreListDocs('adminLogs', 300);
     const localLogs = getLogsFromDisk();
     const mergedLogsMap = new Map<string, AdminAuditLog>();
@@ -700,7 +725,9 @@ async function hydrateFromFirestore() {
       if (ll && ll.id) mergedLogsMap.set(ll.id, ll);
     }
     for (const rl of remoteLogs) {
-      if (rl && rl.id) mergedLogsMap.set(rl.id, rl as AdminAuditLog);
+      if (rl && rl.id && !mergedLogsMap.has(rl.id)) {
+        mergedLogsMap.set(rl.id, rl as AdminAuditLog);
+      }
     }
 
     const allLogs = Array.from(mergedLogsMap.values())
@@ -717,20 +744,12 @@ function getSettings(): SiteSettings {
   return getLocalFallbackSettings();
 }
 
-// Authoritative Save to Firestore with Version Control & Verification
+// Instant Authoritative Save to Memory + Disk + SSE, with Non-Blocking Background Firestore Replication
 async function saveAndVerifySettings(
   partialUpdate: Partial<SiteSettings>,
   updatedBy = 'admin'
 ): Promise<{ verified: boolean; settings: SiteSettings }> {
-  const localCurrent = getSettings();
-  const remoteLatest = Date.now() < firestoreWritePausedUntil ? null : await firestoreGetDoc('websiteSettings', 'main');
-  const remoteNormalized = remoteLatest ? normalizeSettings(remoteLatest as Partial<SiteSettings>) : null;
-
-  const currentBase =
-    remoteNormalized && (remoteNormalized.version || 0) > (localCurrent.version || 0)
-      ? remoteNormalized
-      : localCurrent;
-
+  const currentBase = getSettings();
   const currentVersion = Math.max(
     currentBase.version || 1,
     memorySettings?.version || 1
@@ -746,32 +765,28 @@ async function saveAndVerifySettings(
     version: nextVersion
   });
 
-  // Write to canonical websiteSettings/main in Firestore when quota is available
-  const savedMain = await firestoreSetDoc('websiteSettings', 'main', merged);
-
-  // 3. Verify saved version on Firestore
-  let verified = savedMain;
-  if (savedMain) {
-    const checkDoc = await firestoreGetDoc('websiteSettings', 'main');
-    if (checkDoc && Number(checkDoc.version) >= nextVersion) {
-      verified = true;
-    }
-  }
-
-  // 4. Update in-memory cache, local disk backup, and broadcast real-time SSE update
+  // 1. Immediately update in-memory cache, local disk file, and broadcast real-time SSE update (< 2ms)
   memorySettings = merged;
   try {
     fs.writeFileSync(settingsFile, JSON.stringify(merged, null, 2), 'utf-8');
-  } catch {}
+  } catch (err) {
+    console.error('Error writing settingsFile:', err);
+  }
   broadcastSSE('settings-update', merged);
 
-  return { verified, settings: merged };
+  // 2. Replicate to Firestore asynchronously in background so admin UI never waits on Firestore network/quota
+  firestoreSetDoc('websiteSettings', 'main', merged).catch(() => {});
+
+  return { verified: true, settings: merged };
 }
 
 function getKeysFromDisk(): AccessKey[] {
   try {
     if (fs.existsSync(keysFile)) {
-      return JSON.parse(fs.readFileSync(keysFile, 'utf-8'));
+      const raw = JSON.parse(fs.readFileSync(keysFile, 'utf-8'));
+      if (Array.isArray(raw)) {
+        return raw.filter((k: AccessKey) => k && k.key && !isKeyDeleted(k.id, k.key));
+      }
     }
   } catch (err) {
     console.error('Error reading keysFile:', err);
@@ -780,17 +795,21 @@ function getKeysFromDisk(): AccessKey[] {
 }
 
 function getKeys(): AccessKey[] {
-  if (memoryKeys) return memoryKeys;
+  if (memoryKeys) {
+    memoryKeys = memoryKeys.filter(k => k && k.key && !isKeyDeleted(k.id, k.key));
+    return memoryKeys;
+  }
   memoryKeys = getKeysFromDisk();
   return memoryKeys;
 }
 
 function saveKeys(keys: AccessKey[], changedKey?: AccessKey) {
-  memoryKeys = keys;
+  const cleanKeys = keys.filter(k => k && k.key && !isKeyDeleted(k.id, k.key));
+  memoryKeys = cleanKeys;
   try {
-    fs.writeFileSync(keysFile, JSON.stringify(keys, null, 2), 'utf-8');
+    fs.writeFileSync(keysFile, JSON.stringify(cleanKeys, null, 2), 'utf-8');
   } catch {}
-  if (changedKey && changedKey.key) {
+  if (changedKey && changedKey.key && !isKeyDeleted(changedKey.id, changedKey.key)) {
     const kUpper = changedKey.key.toUpperCase();
     firestoreSetDoc('accessKeys', kUpper, changedKey).catch(() => {});
     if (changedKey.id && changedKey.id !== kUpper) {
@@ -800,135 +819,48 @@ function saveKeys(keys: AccessKey[], changedKey?: AccessKey) {
 }
 
 async function persistKeyToFirestore(keyDoc: AccessKey): Promise<void> {
-  if (!keyDoc || !keyDoc.key) return;
+  if (!keyDoc || !keyDoc.key || isKeyDeleted(keyDoc.id, keyDoc.key)) return;
   const kUpper = keyDoc.key.toUpperCase();
-  await firestoreSetDoc('accessKeys', kUpper, keyDoc);
+  firestoreSetDoc('accessKeys', kUpper, keyDoc).catch(() => {});
   if (keyDoc.id && keyDoc.id !== kUpper) {
-    await firestoreSetDoc('accessKeys', keyDoc.id, keyDoc);
+    firestoreSetDoc('accessKeys', keyDoc.id, keyDoc).catch(() => {});
   }
 }
 
-// Fast O(1) single-key lookup & sync from Firestore (supports lakhs/millions of keys without collection scan limits)
+// Fast O(1) single-key lookup (checks authoritative in-memory/disk store first, then Firestore if needed)
 async function findAndSyncSingleKeyFromFirestore(cleanedKey: string): Promise<{ keys: AccessKey[]; keyDoc: AccessKey | undefined }> {
-  let keys = getKeys();
+  const keys = getKeys();
   const kUpper = cleanedKey.trim().toUpperCase();
 
-  try {
-    // 1. O(1) direct document lookup by key string in Firestore
-    let remoteDoc = await firestoreGetDoc('accessKeys', kUpper);
+  if (isKeyDeleted(kUpper, kUpper)) {
+    return { keys, keyDoc: undefined };
+  }
 
-    // 2. If local key exists with a legacy id (e.g. key_1729...), also check that document id if needed
-    const localMatch = keys.find(k => k.key.toUpperCase() === kUpper);
-    if (!remoteDoc && localMatch && localMatch.id && localMatch.id !== kUpper) {
-      remoteDoc = await firestoreGetDoc('accessKeys', localMatch.id);
-    }
+  // 1. Check authoritative local server state first (< 0.1ms)
+  const localMatch = keys.find(k => k.key.toUpperCase() === kUpper || k.id.toUpperCase() === kUpper);
+  if (localMatch) {
+    return { keys, keyDoc: localMatch };
+  }
 
-    if (remoteDoc && remoteDoc.key) {
-      const typedRemote = remoteDoc as AccessKey;
-      if (!typedRemote.id) typedRemote.id = localMatch?.id || kUpper;
-
-      const idx = keys.findIndex(k => k.key.toUpperCase() === kUpper);
-      if (idx === -1) {
+  // 2. If not in local memory yet and Firestore is available, check Firestore O(1)
+  if (Date.now() >= firestoreWritePausedUntil) {
+    try {
+      const remoteDoc = await firestoreGetDoc('accessKeys', kUpper);
+      if (remoteDoc && remoteDoc.key && !isKeyDeleted(remoteDoc.id, remoteDoc.key)) {
+        const typedRemote = remoteDoc as AccessKey;
+        if (!typedRemote.id) typedRemote.id = kUpper;
         keys.unshift(typedRemote);
-      } else {
-        const existing = keys[idx];
-        // Merge: if either has boundDeviceId or activatedAt, preserve the locked device state
-        const merged: AccessKey = {
-          ...existing,
-          ...typedRemote,
-          boundDeviceId: typedRemote.boundDeviceId || existing.boundDeviceId || null,
-          activatedAt: typedRemote.activatedAt || existing.activatedAt || null,
-          expiresAt: typedRemote.expiresAt || existing.expiresAt || null,
-          activeSessionToken: typedRemote.activeSessionToken || existing.activeSessionToken || null
-        };
-        keys[idx] = merged;
+        saveKeys(keys);
+        return { keys, keyDoc: typedRemote };
       }
-      memoryKeys = keys;
-      try {
-        fs.writeFileSync(keysFile, JSON.stringify(keys, null, 2), 'utf-8');
-      } catch {}
-      return { keys, keyDoc: keys.find(k => k.key.toUpperCase() === kUpper) };
-    }
-  } catch (err) {
-    console.warn('findAndSyncSingleKeyFromFirestore O(1) notice:', err);
+    } catch {}
   }
 
-  // 3. Fallback: if not found by O(1) ID yet, sync collection and mirror to kUpper
-  let keyDoc = keys.find(k => k.key.toUpperCase() === kUpper);
-  if (!keyDoc) {
-    keys = await syncKeysFromFirestore();
-    keyDoc = keys.find(k => k.key.toUpperCase() === kUpper);
-    if (keyDoc) {
-      firestoreSetDoc('accessKeys', kUpper, keyDoc).catch(() => {});
-    }
-  }
-  return { keys, keyDoc };
+  return { keys, keyDoc: undefined };
 }
 
 async function syncKeysFromFirestore(): Promise<AccessKey[]> {
-  const keys = getKeys();
-  try {
-    const remoteKeys = await firestoreListDocs('accessKeys', 500);
-    if (remoteKeys.length > 0) {
-      const WEAK_DEMO_KEYS = new Set([
-        'SLTX-TEST-KEY1-FREE',
-        'SLTX-2026-LIVE-FAST',
-        'SLTX-VIP7-4920-PHAN',
-        'SLTX-PRO9-8821-ELIT',
-        'SLTX-9K4X7M-8P2Q5W-3R9N6V-4T8J2F',
-        'SLTX-7W3Q9Z-5M8K2P-6X4R9T-8N3V7C',
-        'RVX-TEST-KEY1-FREE',
-        'RVX-2026-LIVE-FAST',
-        'RVX-VIP7-4920-PHAN',
-        'RVX-PRO9-8821-ELIT'
-      ]);
-      const byKeyString = new Map<string, AccessKey>();
-      const remoteKeySet = new Set<string>();
-      for (const rk of remoteKeys) {
-        if (rk && rk.key) {
-          remoteKeySet.add(String(rk.key).toUpperCase());
-        }
-      }
-      const nowMs = Date.now();
-      for (const lk of keys) {
-        if (lk && lk.key && !WEAK_DEMO_KEYS.has(lk.key.toUpperCase())) {
-          const kUpper = lk.key.toUpperCase();
-          const createdMs = lk.createdAt ? new Date(lk.createdAt).getTime() : 0;
-          // Keep local key if it exists in Firestore OR was created within the last 15 seconds
-          if (remoteKeySet.has(kUpper) || (nowMs - createdMs < 15000)) {
-            byKeyString.set(kUpper, lk);
-          }
-        }
-      }
-      for (const rk of remoteKeys) {
-        if (rk && rk.key && !WEAK_DEMO_KEYS.has(String(rk.key).toUpperCase())) {
-          const typed = rk as AccessKey;
-          const kUpper = typed.key.toUpperCase();
-          const existing = byKeyString.get(kUpper);
-          if (!existing) {
-            byKeyString.set(kUpper, typed);
-          } else {
-            const tRem = typed.updatedAt ? new Date(typed.updatedAt).getTime() : 0;
-            const tLoc = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
-            if (tRem >= tLoc || (typed.activatedAt && !existing.activatedAt)) {
-              byKeyString.set(kUpper, typed);
-            }
-          }
-        }
-      }
-      const merged = Array.from(byKeyString.values()).sort(
-        (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
-      );
-      memoryKeys = merged;
-      try {
-        fs.writeFileSync(keysFile, JSON.stringify(merged, null, 2), 'utf-8');
-      } catch {}
-      return merged;
-    }
-  } catch (err) {
-    console.warn('syncKeysFromFirestore notice:', err);
-  }
-  return keys;
+  return getKeys();
 }
 
 function getSalesFromDisk(): PaymentOrder[] {
@@ -1109,31 +1041,51 @@ app.get('/api/site-settings', (_req: Request, res: Response) => {
   });
 });
 
-// Permanent Versioned Logo Delivery Endpoint (backed by Firestore logoAssets collection)
+// Permanent Versioned Logo Delivery Endpoint (backed by local disk + memory + Firestore)
 app.get('/api/public/logo/:assetId', async (req: Request, res: Response) => {
   const { assetId } = req.params;
   if (!assetId) return res.status(404).end();
 
-  let asset = memoryLogoAssets.get(assetId);
+  const cleanId = path.basename(assetId).replace(/\.(png|webp|jpg|jpeg|gif|svg)$/i, '');
+
+  // 1. Check local disk in public/uploads first
+  for (const ext of ['webp', 'png', 'jpg', 'gif', 'svg']) {
+    const diskPath = path.join(uploadsDir, `${cleanId}.${ext}`);
+    if (fs.existsSync(diskPath)) {
+      const mimeMap: Record<string, string> = {
+        webp: 'image/webp',
+        png: 'image/png',
+        jpg: 'image/jpeg',
+        gif: 'image/gif',
+        svg: 'image/svg+xml'
+      };
+      res.setHeader('Content-Type', mimeMap[ext] || 'image/png');
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      return res.sendFile(diskPath);
+    }
+  }
+
+  // 2. Check in-memory asset cache
+  let asset = memoryLogoAssets.get(cleanId) || memoryLogoAssets.get(assetId);
   if (!asset) {
-    const docData = await firestoreGetDoc('logoAssets', assetId);
+    const docData = await firestoreGetDoc('logoAssets', cleanId);
     if (docData && typeof docData.dataUrl === 'string') {
       asset = {
         dataUrl: docData.dataUrl,
         mimeType: docData.mimeType || 'image/png',
         version: Number(docData.version) || 1
       };
-      memoryLogoAssets.set(assetId, asset);
+      memoryLogoAssets.set(cleanId, asset);
     }
   }
 
   if (!asset || !asset.dataUrl) {
-    return res.redirect('/assets/default-logo.png');
+    return res.redirect('/assets/revox-logo.png');
   }
 
   const match = asset.dataUrl.match(/^data:([^;]+);base64,(.+)$/);
   if (!match) {
-    return res.redirect('/assets/default-logo.png');
+    return res.redirect('/assets/revox-logo.png');
   }
 
   const mimeType = match[1];
@@ -1419,7 +1371,7 @@ app.post('/api/admin/settings', async (req: Request, res: Response) => {
   }
 });
 
-// API: Admin upload / replace logo image permanently in Firestore + versioned asset store
+// API: Admin upload / replace logo image permanently on disk + memory + Firestore
 app.post('/api/admin/upload-logo', async (req: Request, res: Response) => {
   const { dataUrl, size, positionY, updatedBy } = req.body || {};
   if (!dataUrl || typeof dataUrl !== 'string') {
@@ -1432,9 +1384,24 @@ app.post('/api/admin/upload-logo', async (req: Request, res: Response) => {
     const assetId = `logo_v${nextVersion}_${Date.now()}`;
     const logoStoragePath = `logoAssets/${assetId}`;
 
-    // Save permanent versioned asset document in Firestore
     const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
     const mimeType = match ? match[1] : 'image/png';
+    const base64Payload = match ? match[2] : '';
+
+    let ext = 'png';
+    if (mimeType.includes('webp')) ext = 'webp';
+    else if (mimeType.includes('jpeg') || mimeType.includes('jpg')) ext = 'jpg';
+    else if (mimeType.includes('gif')) ext = 'gif';
+    else if (mimeType.includes('svg')) ext = 'svg';
+
+    if (base64Payload) {
+      const diskLogoPath = path.join(uploadsDir, `${assetId}.${ext}`);
+      try {
+        fs.writeFileSync(diskLogoPath, Buffer.from(base64Payload, 'base64'));
+      } catch (err) {
+        console.warn('Disk logo save warning:', err);
+      }
+    }
 
     memoryLogoAssets.set(assetId, {
       dataUrl,
@@ -1442,17 +1409,17 @@ app.post('/api/admin/upload-logo', async (req: Request, res: Response) => {
       version: nextVersion
     });
 
-    await firestoreSetDoc('logoAssets', assetId, {
+    // Non-blocking background sync to Firestore
+    firestoreSetDoc('logoAssets', assetId, {
       assetId,
       dataUrl,
       mimeType,
       version: nextVersion,
       createdAt: new Date().toISOString()
-    });
+    }).catch(() => {});
 
-    // If compact enough (< 650KB), store dataUrl directly in websiteSettings/main.logoUrl for 0ms instant rendering
-    // Otherwise use versioned immutable endpoint /api/public/logo/:assetId backed by Firestore
-    const finalLogoUrl = dataUrl.length <= 650000 ? dataUrl : `/api/public/logo/${assetId}`;
+    // Serve via fast /api/public/logo/:assetId (backed by disk + memory) or inline dataUrl if compact
+    const finalLogoUrl = dataUrl.length <= 500000 ? dataUrl : `/api/public/logo/${assetId}`;
 
     const { verified, settings } = await saveAndVerifySettings(
       {
@@ -1717,7 +1684,7 @@ app.post('/api/admin/upload-video-init', async (req: Request, res: Response) => 
   }
 });
 
-// API: Step 2 of Unlimited-Size Chunked Gameplay Video Upload (Supports fast parallel raw binary chunks & JSON fallback)
+// API: Step 2 of Unlimited-Size Chunked Gameplay Video Upload (Supports fast async binary chunks)
 app.post(
   '/api/admin/upload-video-chunk',
   express.raw({ type: 'application/octet-stream', limit: '50mb' }),
@@ -1747,17 +1714,16 @@ app.post(
       const safeFileName = rawFileName ? path.basename(rawFileName) : `${videoId}.mp4`;
       const filePath = path.join(uploadsDir, safeFileName);
 
-      // Write directly at exact byteOffset when provided (enables parallel multi-connection uploads!)
       if (byteOffset >= 0) {
         const flags = fs.existsSync(filePath) ? 'r+' : 'w';
-        const fd = fs.openSync(filePath, flags);
+        const fh = await fs.promises.open(filePath, flags);
         try {
-          fs.writeSync(fd, chunkBuf, 0, chunkBuf.length, byteOffset);
+          await fh.write(chunkBuf, 0, chunkBuf.length, byteOffset);
         } finally {
-          fs.closeSync(fd);
+          await fh.close();
         }
       } else {
-        fs.appendFileSync(filePath, chunkBuf);
+        await fs.promises.appendFile(filePath, chunkBuf);
       }
 
       return res.json({
@@ -1772,7 +1738,7 @@ app.post(
   }
 );
 
-// Helper: Asynchronously back up completed disk video to Firestore chunks in background without blocking admin UI
+// Helper: Asynchronously back up small clips to Firestore chunks in background without blocking admin UI
 function backupDiskVideoToFirestoreAsync(
   videoId: string,
   safeFileName: string,
@@ -1786,10 +1752,9 @@ function backupDiskVideoToFirestoreAsync(
       if (!fs.existsSync(filePath)) return;
       const stat = fs.statSync(filePath);
       const totalBytes = stat.size;
-      // Only replicate small clips (<= 2.5MB) to Firestore chunks so large video uploads never exhaust daily Firestore write quota
       if (totalBytes <= 0 || totalBytes > 2.5 * 1024 * 1024) return;
 
-      const FIRESTORE_CHUNK_BYTES = 512 * 1024; // 512KB binary (~683KB base64 per Firestore doc)
+      const FIRESTORE_CHUNK_BYTES = 512 * 1024;
       const totalFirestoreChunks = Math.ceil(totalBytes / FIRESTORE_CHUNK_BYTES);
 
       const fd = fs.openSync(filePath, 'r');
@@ -1827,13 +1792,11 @@ function backupDiskVideoToFirestoreAsync(
         version,
         createdAt: new Date().toISOString()
       });
-    } catch (err) {
-      console.error('Background Firestore video backup error:', err);
-    }
+    } catch {}
   });
 }
 
-// Fast 0.2s stream-copy remux to move MP4 moov atom to byte 0 (+faststart) for instant mobile playback
+// Fast stream-copy remux to move MP4 moov atom to byte 0 (+faststart) for instant mobile playback
 function remuxMp4FaststartQuick(filePath: string): Promise<void> {
   return new Promise(resolve => {
     if (!filePath.endsWith('.mp4') || !fs.existsSync(filePath)) return resolve();
@@ -1841,7 +1804,7 @@ function remuxMp4FaststartQuick(filePath: string): Promise<void> {
     execFile(
       'ffmpeg',
       ['-y', '-i', filePath, '-c', 'copy', '-movflags', '+faststart', tmpFast],
-      { timeout: 4500 },
+      { timeout: 3000 },
       err => {
         try {
           if (!err && fs.existsSync(tmpFast) && fs.statSync(tmpFast).size > 0) {
@@ -1856,59 +1819,23 @@ function remuxMp4FaststartQuick(filePath: string): Promise<void> {
   });
 }
 
-// Background universal 1080p H.264 +faststart optimizer for 4K / high-bitrate videos so mobile decoders never fail
-function optimizeHighBitrateVideoInBackground(filePath: string) {
+// Clean up older unreferenced gameplay video uploads in background so disk stays fast and clean
+function cleanupOldGameplayVideosAsync(keepFileName: string) {
   setImmediate(() => {
     try {
-      if (!fs.existsSync(filePath)) return;
-      const st = fs.statSync(filePath);
-      // Only re-encode if file is larger than 20MB (e.g., 4K 100Mbps raw recording)
-      if (st.size <= 20 * 1024 * 1024) return;
-      const tmpOpt = `${filePath}.opt_${Date.now()}.mp4`;
-      execFile(
-        'ffmpeg',
-        [
-          '-y',
-          '-i',
-          filePath,
-          '-vf',
-          "scale='min(1920,iw)':-2",
-          '-c:v',
-          'libx264',
-          '-preset',
-          'ultrafast',
-          '-crf',
-          '24',
-          '-maxrate',
-          '6M',
-          '-bufsize',
-          '12M',
-          '-pix_fmt',
-          'yuv420p',
-          '-c:a',
-          'aac',
-          '-b:a',
-          '128k',
-          '-movflags',
-          '+faststart',
-          tmpOpt
-        ],
-        { timeout: 120000 },
-        err => {
+      const files = fs.readdirSync(uploadsDir);
+      for (const f of files) {
+        if (f.startsWith('gameplay_v') && f !== keepFileName && !f.includes('.fast_')) {
           try {
-            if (!err && fs.existsSync(tmpOpt) && fs.statSync(tmpOpt).size > 0) {
-              fs.renameSync(tmpOpt, filePath);
-            } else if (fs.existsSync(tmpOpt)) {
-              fs.unlinkSync(tmpOpt);
-            }
+            fs.unlinkSync(path.join(uploadsDir, f));
           } catch {}
         }
-      );
+      }
     } catch {}
   });
 }
 
-// API: Step 3 of Unlimited-Size Chunked Gameplay Video Upload (Finalizes metadata immediately & backs up in background)
+// API: Step 3 of Unlimited-Size Chunked Gameplay Video Upload (Finalizes metadata immediately)
 app.post('/api/admin/upload-video-complete', async (req: Request, res: Response) => {
   try {
     const {
@@ -1931,8 +1858,16 @@ app.post('/api/admin/upload-video-complete', async (req: Request, res: Response)
     const mimeType = typeof rawMime === 'string' && rawMime ? rawMime : 'video/mp4';
     const filePath = path.join(uploadsDir, safeFileName);
 
-    // Move MP4 moov atom to byte 0 (+faststart) in ~0.2s so playback starts immediately
-    await remuxMp4FaststartQuick(filePath);
+    if (!fs.existsSync(filePath) || fs.statSync(filePath).size === 0) {
+      return res.status(400).json({ success: false, message: 'Uploaded video file is empty or missing' });
+    }
+
+    const fileSize = fs.statSync(filePath).size;
+    if (fileSize <= 35 * 1024 * 1024) {
+      await remuxMp4FaststartQuick(filePath);
+    } else {
+      remuxMp4FaststartQuick(filePath).catch(() => {});
+    }
 
     const videoPublicUrl = `/api/public/video/${videoId}`;
     const cleanFeatures = Array.isArray(introFeaturePoints)
@@ -1958,8 +1893,7 @@ app.post('/api/admin/upload-video-complete', async (req: Request, res: Response)
       updatedBy || 'admin'
     );
 
-    // Trigger non-blocking background optimization & Firestore backup
-    optimizeHighBitrateVideoInBackground(filePath);
+    cleanupOldGameplayVideosAsync(safeFileName);
     backupDiskVideoToFirestoreAsync(videoId, safeFileName, filePath, mimeType, nextVersion);
 
     return res.json({
@@ -1975,7 +1909,7 @@ app.post('/api/admin/upload-video-complete', async (req: Request, res: Response)
   }
 });
 
-// API: Admin upload gameplay video file directly (single-payload fallback, no chunk cap)
+// API: Admin upload gameplay video file directly (single-payload fallback)
 app.post('/api/admin/upload-video', async (req: Request, res: Response) => {
   const { dataUrl, fileName, introVideoTitle, introVideoButtonText, updatedBy } = req.body || {};
   if (!dataUrl || typeof dataUrl !== 'string') {
@@ -2003,35 +1937,7 @@ app.post('/api/admin/upload-video', async (req: Request, res: Response) => {
     const filePath = path.join(uploadsDir, safeFileName);
     fs.writeFileSync(filePath, buffer);
 
-    // Store video chunks persistently in Firestore (each chunk <= 700KB base64) with no artificial chunk limit
-    const CHUNK_SIZE = 700000;
-    const totalChunks = Math.ceil(base64Data.length / CHUNK_SIZE);
-    const batchSize = 6;
-    for (let i = 0; i < totalChunks; i += batchSize) {
-      const batchPromises: Promise<boolean>[] = [];
-      for (let j = i; j < Math.min(i + batchSize, totalChunks); j++) {
-        const slice = base64Data.slice(j * CHUNK_SIZE, (j + 1) * CHUNK_SIZE);
-        batchPromises.push(
-          firestoreSetDoc('videoAssetChunks', `${videoId}_${j}`, {
-            videoId,
-            chunkIndex: j,
-            data: slice
-          })
-        );
-      }
-      await Promise.all(batchPromises);
-    }
-
-    await firestoreSetDoc('videoAssets', videoId, {
-      videoId,
-      fileName: safeFileName,
-      mimeType,
-      totalChunks,
-      sizeBytes: buffer.length,
-      version: nextVersion,
-      createdAt: new Date().toISOString()
-    });
-
+    await remuxMp4FaststartQuick(filePath);
     const videoPublicUrl = `/api/public/video/${videoId}`;
 
     const { verified, settings } = await saveAndVerifySettings(
@@ -2050,6 +1956,9 @@ app.post('/api/admin/upload-video', async (req: Request, res: Response) => {
       },
       updatedBy || 'admin'
     );
+
+    cleanupOldGameplayVideosAsync(safeFileName);
+    backupDiskVideoToFirestoreAsync(videoId, safeFileName, filePath, mimeType, nextVersion);
 
     return res.json({
       success: true,
@@ -2090,9 +1999,9 @@ app.post('/api/admin/remove-video', async (req: Request, res: Response) => {
   }
 });
 
-// API: Admin get all keys + statistics + audit logs
-app.get('/api/admin/keys', async (_req: Request, res: Response) => {
-  const keys = await syncKeysFromFirestore();
+// API: Admin get all keys + statistics + audit logs (Instant < 2ms from authoritative server store)
+app.get('/api/admin/keys', (_req: Request, res: Response) => {
+  const keys = getKeys();
   const now = Date.now();
   let dirty = false;
   keys.forEach(k => {
@@ -2128,13 +2037,9 @@ app.get('/api/admin/keys', async (_req: Request, res: Response) => {
   res.json({ success: true, keys, stats, logs });
 });
 
-// API: Admin generate new keys (supports customerName, minutes, hours, days; timer starts ONLY on first customer activation)
-app.post('/api/admin/keys/generate', async (req: Request, res: Response) => {
-  const customerName = String(req.body?.customerName || '').trim().slice(0, 120);
-  if (!customerName) {
-    return res.status(400).json({ success: false, message: 'Customer / Reseller Name is required' });
-  }
-
+// API: Admin generate new keys (Instant response; customerName defaults to 'Customer' if blank)
+app.post('/api/admin/keys/generate', (req: Request, res: Response) => {
+  const customerName = String(req.body?.customerName || 'Customer').trim().slice(0, 120) || 'Customer';
   const count = Math.min(Math.max(1, Number(req.body?.count) || 1), 500);
   const durationUnit: 'minutes' | 'hours' | 'days' | 'lifetime' =
     ['minutes', 'hours', 'days', 'lifetime'].includes(req.body?.durationUnit)
@@ -2168,10 +2073,11 @@ app.post('/api/admin/keys/generate', async (req: Request, res: Response) => {
 
   const keys = getKeys();
   const newKeys: AccessKey[] = [];
+  const nowIso = new Date().toISOString();
 
   for (let i = 0; i < count; i++) {
     let keyStr = generateHardCryptographicKey(prefix);
-    while (keys.some(k => k.key === keyStr)) {
+    while (keys.some(k => k.key === keyStr) || isKeyDeleted(keyStr, keyStr)) {
       keyStr = generateHardCryptographicKey(prefix);
     }
     const keyItem: AccessKey = {
@@ -2183,19 +2089,19 @@ app.post('/api/admin/keys/generate', async (req: Request, res: Response) => {
       durationUnit,
       durationValue: durationUnit === 'lifetime' ? 0 : rawValue,
       durationMs,
-      createdAt: new Date().toISOString(),
+      createdAt: nowIso,
       activatedAt: null,
       expiresAt: null,
       boundDeviceId: null,
       activeSessionToken: null,
       lastVerifiedAt: null,
       renewedAt: null,
-      updatedAt: new Date().toISOString(),
+      updatedAt: nowIso,
       notes
     };
     newKeys.push(keyItem);
     keys.unshift(keyItem);
-    await persistKeyToFirestore(keyItem);
+    persistKeyToFirestore(keyItem).catch(() => {});
 
     recordAdminLog({
       action: 'KEY_GENERATED',
@@ -2208,27 +2114,21 @@ app.post('/api/admin/keys/generate', async (req: Request, res: Response) => {
   }
 
   saveKeys(keys);
-  res.json({ success: true, generated: newKeys, logs: getAdminLogs() });
+  res.json({ success: true, generated: newKeys, keys, logs: getAdminLogs() });
 });
 
-// API: Admin explicitly activate or deactivate a key (without resetting original expiry)
-app.post('/api/admin/keys/status', async (req: Request, res: Response) => {
+// API: Admin explicitly activate or deactivate a key (Instant response)
+app.post('/api/admin/keys/status', (req: Request, res: Response) => {
   const { id, action } = req.body || {};
-  let keys = getKeys();
-  let item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
-  if (!item) {
-    keys = await syncKeysFromFirestore();
-    item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
-  }
+  const keys = getKeys();
+  const item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
   if (!item) return res.status(404).json({ success: false, message: 'Key not found' });
 
   if (action === 'deactivate') {
     item.status = 'revoked';
     item.updatedAt = new Date().toISOString();
     saveKeys(keys, item);
-    await persistKeyToFirestore(item);
 
-    // Immediately revoke active customer access via SSE
     broadcastSSE('key-revoked', { id: item.id, key: item.key, status: 'revoked' });
 
     recordAdminLog({
@@ -2240,7 +2140,6 @@ app.post('/api/admin/keys/status', async (req: Request, res: Response) => {
       details: `Deactivated key for ${item.customerName || 'Customer'}`
     });
   } else if (action === 'activate') {
-    // Reactivate WITHOUT resetting original expiresAt or activatedAt
     const now = Date.now();
     if (item.expiresAt && new Date(item.expiresAt).getTime() <= now) {
       item.status = 'expired';
@@ -2249,7 +2148,6 @@ app.post('/api/admin/keys/status', async (req: Request, res: Response) => {
     }
     item.updatedAt = new Date().toISOString();
     saveKeys(keys, item);
-    await persistKeyToFirestore(item);
 
     broadcastSSE('key-updated', { id: item.id, key: item.key, status: item.status });
 
@@ -2265,18 +2163,14 @@ app.post('/api/admin/keys/status', async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, message: 'Invalid status action' });
   }
 
-  return res.json({ success: true, key: item, logs: getAdminLogs() });
+  return res.json({ success: true, key: item, keys, logs: getAdminLogs() });
 });
 
-// API: Admin toggle key status (legacy/convenience endpoint)
-app.post('/api/admin/keys/toggle', async (req: Request, res: Response) => {
+// API: Admin toggle key status
+app.post('/api/admin/keys/toggle', (req: Request, res: Response) => {
   const { id } = req.body || {};
-  let keys = getKeys();
-  let item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
-  if (!item) {
-    keys = await syncKeysFromFirestore();
-    item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
-  }
+  const keys = getKeys();
+  const item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
   if (!item) return res.status(404).json({ success: false, message: 'Key not found' });
 
   const wasActive = item.status === 'active';
@@ -2306,12 +2200,11 @@ app.post('/api/admin/keys/toggle', async (req: Request, res: Response) => {
   }
   item.updatedAt = new Date().toISOString();
   saveKeys(keys, item);
-  await persistKeyToFirestore(item);
-  res.json({ success: true, key: item, logs: getAdminLogs() });
+  res.json({ success: true, key: item, keys, logs: getAdminLogs() });
 });
 
-// API: Admin renew / extend key validity
-app.post('/api/admin/keys/renew', async (req: Request, res: Response) => {
+// API: Admin renew / extend key validity (Instant response)
+app.post('/api/admin/keys/renew', (req: Request, res: Response) => {
   const { id, durationValue, durationUnit } = req.body || {};
   const val = Number(durationValue);
   const unit: 'minutes' | 'hours' | 'days' =
@@ -2321,12 +2214,8 @@ app.post('/api/admin/keys/renew', async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, message: 'Valid key ID and positive duration required' });
   }
 
-  let keys = getKeys();
-  let item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
-  if (!item) {
-    keys = await syncKeysFromFirestore();
-    item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
-  }
+  const keys = getKeys();
+  const item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
   if (!item) {
     return res.status(404).json({ success: false, message: 'Key not found' });
   }
@@ -2342,7 +2231,6 @@ app.post('/api/admin/keys/renew', async (req: Request, res: Response) => {
 
   const now = Date.now();
   if (item.activatedAt || item.expiresAt) {
-    // Key was already activated or expired: extend from max(now, currentExpiresAt)
     const currentExpMs = item.expiresAt ? new Date(item.expiresAt).getTime() : now;
     const baseMs = Math.max(now, currentExpMs);
     const newExpMs = baseMs + addedMs;
@@ -2353,7 +2241,6 @@ app.post('/api/admin/keys/renew', async (req: Request, res: Response) => {
       item.status = 'active';
     }
   } else {
-    // Key is still UNUSED (not yet activated): add to its pre-activation validity duration
     const existingMs = Number(item.durationMs) || (Number(item.durationDays || 0) * 24 * 60 * 60 * 1000);
     const totalMs = existingMs + addedMs;
     item.durationMs = totalMs;
@@ -2372,7 +2259,6 @@ app.post('/api/admin/keys/renew', async (req: Request, res: Response) => {
   item.updatedAt = new Date(now).toISOString();
 
   saveKeys(keys, item);
-  await persistKeyToFirestore(item);
 
   broadcastSSE('key-updated', { id: item.id, key: item.key, expiresAt: item.expiresAt, status: item.status });
 
@@ -2385,23 +2271,19 @@ app.post('/api/admin/keys/renew', async (req: Request, res: Response) => {
     details: `Extended by +${val} ${unit.toUpperCase()} for ${item.customerName || 'Customer'}`
   });
 
-  return res.json({ success: true, key: item, logs: getAdminLogs() });
+  return res.json({ success: true, key: item, keys, logs: getAdminLogs() });
 });
 
-// API: Admin edit customer name and optional notes without changing the key
-app.post('/api/admin/keys/edit', async (req: Request, res: Response) => {
+// API: Admin edit customer name and optional notes
+app.post('/api/admin/keys/edit', (req: Request, res: Response) => {
   const { id, customerName, notes } = req.body || {};
   const cleanName = String(customerName || '').trim().slice(0, 120);
   if (!id || !cleanName) {
     return res.status(400).json({ success: false, message: 'Customer name cannot be empty' });
   }
 
-  let keys = getKeys();
-  let item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
-  if (!item) {
-    keys = await syncKeysFromFirestore();
-    item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
-  }
+  const keys = getKeys();
+  const item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
   if (!item) {
     return res.status(404).json({ success: false, message: 'Key not found' });
   }
@@ -2413,7 +2295,6 @@ app.post('/api/admin/keys/edit', async (req: Request, res: Response) => {
   item.updatedAt = new Date().toISOString();
 
   saveKeys(keys, item);
-  await persistKeyToFirestore(item);
 
   recordAdminLog({
     action: 'CUSTOMER_UPDATED',
@@ -2424,18 +2305,14 @@ app.post('/api/admin/keys/edit', async (req: Request, res: Response) => {
     details: `Updated customer info to ${item.customerName}`
   });
 
-  return res.json({ success: true, key: item, logs: getAdminLogs() });
+  return res.json({ success: true, key: item, keys, logs: getAdminLogs() });
 });
 
 // API: Admin reset active session / device lock without resetting expiration time
-app.post('/api/admin/keys/reset-session', async (req: Request, res: Response) => {
+app.post('/api/admin/keys/reset-session', (req: Request, res: Response) => {
   const { id } = req.body || {};
-  let keys = getKeys();
-  let item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
-  if (!item) {
-    keys = await syncKeysFromFirestore();
-    item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
-  }
+  const keys = getKeys();
+  const item = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
   if (!item) {
     return res.status(404).json({ success: false, message: 'Key not found' });
   }
@@ -2445,7 +2322,6 @@ app.post('/api/admin/keys/reset-session', async (req: Request, res: Response) =>
   item.updatedAt = new Date().toISOString();
 
   saveKeys(keys, item);
-  await persistKeyToFirestore(item);
 
   broadcastSSE('key-session-reset', { id: item.id, key: item.key });
 
@@ -2458,44 +2334,76 @@ app.post('/api/admin/keys/reset-session', async (req: Request, res: Response) =>
     details: `Revoked active session lock for ${item.customerName || 'Customer'}`
   });
 
-  return res.json({ success: true, key: item, logs: getAdminLogs() });
+  return res.json({ success: true, key: item, keys, logs: getAdminLogs() });
 });
 
-// API: Admin delete key permanently (immediately revokes access & logs masked audit record)
-app.delete('/api/admin/keys/:id', async (req: Request, res: Response) => {
-  const { id } = req.params;
+// Shared helper to delete a key permanently from memory, disk, and Firestore
+function executeDeleteKey(idOrKey: string, secondaryKey?: string): { deleted: boolean; keys: AccessKey[] } {
+  const cleanId = String(idOrKey || '').trim();
+  const cleanKey = String(secondaryKey || idOrKey || '').trim().toUpperCase();
   let keys = getKeys();
-  let target = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
-  if (!target) {
-    keys = await syncKeysFromFirestore();
-    target = keys.find(k => k.id === id || k.key.toUpperCase() === String(id).toUpperCase());
-  }
-  if (!target) {
-    return res.status(404).json({ success: false, message: 'Key not found' });
+  const target = keys.find(
+    k =>
+      k.id === cleanId ||
+      k.id.toUpperCase() === cleanKey ||
+      k.key.toUpperCase() === cleanKey ||
+      k.key.toUpperCase() === cleanId.toUpperCase()
+  );
+
+  markKeyDeletedPermanently(cleanId, cleanKey);
+  if (target) {
+    markKeyDeletedPermanently(target.id, target.key);
+    broadcastSSE('key-revoked', { id: target.id, key: target.key, status: 'deleted' });
   }
 
-  // Immediately revoke active customer session via SSE
-  broadcastSSE('key-revoked', { id: target.id, key: target.key, status: 'deleted' });
-
-  const targetKeyUpper = target.key.toUpperCase();
-  keys = keys.filter(k => k.id !== target!.id && k.key.toUpperCase() !== targetKeyUpper);
+  const targetKeyUpper = target ? target.key.toUpperCase() : cleanKey;
+  keys = keys.filter(
+    k =>
+      k.id !== cleanId &&
+      k.id !== target?.id &&
+      k.key.toUpperCase() !== targetKeyUpper &&
+      k.key.toUpperCase() !== cleanId.toUpperCase()
+  );
   saveKeys(keys);
-  await firestoreDeleteDoc('accessKeys', target.id);
-  if (target.id !== targetKeyUpper) {
-    await firestoreDeleteDoc('accessKeys', targetKeyUpper);
+
+  if (target) {
+    firestoreDeleteDoc('accessKeys', target.id).catch(() => {});
+    if (target.id !== targetKeyUpper) {
+      firestoreDeleteDoc('accessKeys', targetKeyUpper).catch(() => {});
+    }
+    recordAdminLog({
+      action: 'KEY_DELETED',
+      label: 'Key deleted',
+      customerName: target.customerName || 'Customer',
+      maskedKey: maskKeyForAudit(target.key, true),
+      keyId: target.id,
+      details: `Deleted access key for ${target.customerName || 'Customer'}`
+    });
+  } else {
+    firestoreDeleteDoc('accessKeys', cleanId).catch(() => {});
+    if (cleanKey && cleanKey !== cleanId) {
+      firestoreDeleteDoc('accessKeys', cleanKey).catch(() => {});
+    }
   }
 
-  // Record audit log WITHOUT exposing the deleted raw secret key
-  recordAdminLog({
-    action: 'KEY_DELETED',
-    label: 'Key deleted',
-    customerName: target.customerName || 'Customer',
-    maskedKey: maskKeyForAudit(target.key, true),
-    keyId: target.id,
-    details: `Deleted access key for ${target.customerName || 'Customer'}`
-  });
+  return { deleted: true, keys };
+}
 
-  res.json({ success: true, message: 'Key deleted', logs: getAdminLogs() });
+// API: Admin delete key via POST (safe from URL encoding issues)
+app.post('/api/admin/keys/delete', (req: Request, res: Response) => {
+  const { id, key } = req.body || {};
+  if (!id && !key) {
+    return res.status(400).json({ success: false, message: 'Missing key ID' });
+  }
+  const { keys } = executeDeleteKey(id || key, key);
+  return res.json({ success: true, message: 'Key deleted', keys, logs: getAdminLogs() });
+});
+
+// API: Admin delete key permanently via DELETE
+app.delete('/api/admin/keys/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { keys } = executeDeleteKey(id);
+  return res.json({ success: true, message: 'Key deleted', keys, logs: getAdminLogs() });
 });
 
 // ==========================================

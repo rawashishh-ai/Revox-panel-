@@ -206,7 +206,7 @@ export default function App() {
     []
   );
 
-  // 1. Canonical Firestore listener on `websiteSettings/main` (single listener per active session)
+  // 1. Admin URL Detection & Connection Check
   useEffect(() => {
     testConnection();
 
@@ -224,26 +224,9 @@ export default function App() {
       setHasPassedIntro(true);
       setAdminOpen(true);
     }
+  }, []);
 
-    const unsubMain = onSnapshot(
-      doc(db, 'websiteSettings', 'main'),
-      (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data() as Partial<SiteSettings>;
-          applyAuthoritativeSettings(data);
-        }
-      },
-      (error) => {
-        console.warn('Firestore websiteSettings/main listener fallback active:', error.message);
-      }
-    );
-
-    return () => {
-      unsubMain();
-    };
-  }, [applyAuthoritativeSettings]);
-
-  // 2. Versioned Public Settings Endpoint & Real-Time SSE Broadcast Stream
+  // 2. Authoritative Public Settings Endpoint & Real-Time SSE Broadcast Stream
   useEffect(() => {
     let active = true;
 
@@ -251,10 +234,18 @@ export default function App() {
       .then(res => res.json())
       .then(data => {
         if (active && data.success && data.settings) {
-          applyAuthoritativeSettings(data.settings);
+          applyAuthoritativeSettings(data.settings, true);
         }
       })
-      .catch(err => console.warn('Public settings fetch notice:', err))
+      .catch(async err => {
+        console.warn('Public settings fetch notice, checking Firestore fallback:', err);
+        try {
+          const snap = await getDoc(doc(db, 'websiteSettings', 'main'));
+          if (active && snap.exists()) {
+            applyAuthoritativeSettings(snap.data() as Partial<SiteSettings>);
+          }
+        } catch {}
+      })
       .finally(() => {
         if (active) setInitialLoading(false);
       });
@@ -264,7 +255,7 @@ export default function App() {
     eventSource.addEventListener('settings-update', (e: MessageEvent) => {
       try {
         const updated = JSON.parse(e.data);
-        applyAuthoritativeSettings(updated);
+        applyAuthoritativeSettings(updated, true);
       } catch (err) {
         console.error('SSE settings-update parse error:', err);
       }
@@ -273,7 +264,7 @@ export default function App() {
     eventSource.addEventListener('initial', (e: MessageEvent) => {
       try {
         const initial = JSON.parse(e.data);
-        applyAuthoritativeSettings(initial);
+        applyAuthoritativeSettings(initial, true);
       } catch (err) {
         console.error('SSE initial parse error:', err);
       }

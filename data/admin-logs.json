@@ -2,6 +2,26 @@
   {
     "action": "KEY_DELETED",
     "label": "Key deleted",
+    "customerName": "TestVerification",
+    "maskedKey": "RVX-94M4-••••-E5EF",
+    "keyId": "RVX-94M4-GL6B-E5EF",
+    "details": "Deleted access key for TestVerification",
+    "id": "log_1792908375414_8265bf",
+    "timestamp": "2026-10-25T06:06:15.414Z"
+  },
+  {
+    "action": "KEY_GENERATED",
+    "label": "Key generated",
+    "customerName": "TestVerification",
+    "maskedKey": "RVX-94M4-GL6B-E5EF",
+    "keyId": "RVX-94M4-GL6B-E5EF",
+    "details": "7 DAYS for TestVerification",
+    "id": "log_1792908375407_7dacd6",
+    "timestamp": "2026-10-25T06:06:15.407Z"
+  },
+  {
+    "action": "KEY_DELETED",
+    "label": "Key deleted",
     "customerName": "CROSS_DEVICE_TEST",
     "maskedKey": "RVX-G3C4-••••-WH68",
     "keyId": "RVX-G3C4-3E8A-WH68",

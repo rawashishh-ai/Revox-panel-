@@ -6,7 +6,7 @@
   "websiteTitle": "REVOX PANEL",
   "panelName": "REVOX PANEL",
   "announcementTitle": "WE'RE MOVING",
-  "announcementFrom": "SILENTX",
+  "announcementFrom": "ANTIBAN",
   "announcementTo": "REVOX PANEL",
   "announcementText": "100% ANTI BAN\n90% DRAG HEADSHOT RATE - LIVE ENEMY LOCATION\nMODE MENU ✖ PANEL ✔\n10 + HACK FEATURE - 100% MAIN I'D SAFE",
   "announcementBody": "",
@@ -17,10 +17,10 @@
     "10 + HACK FEATURE - 100% MAIN I'D SAFE"
   ],
   "introFeaturePoints": [
-    "100% Anti-Ban Protection & High-Security Bypass",
-    "Smooth Aimbot, ESP & Ultra-Low Latency Gameplay",
-    "Instant Key Activation with 1-Device Security Lock",
-    "Works on All Latest Updates with 24/7 VIP Support"
+    "100% ANTI BAN",
+    "90% DRAG HEADSHOT RATE - LIVE ENEMY LOCATION",
+    "MODE MENU ✖ PANEL ✔",
+    "10 + HACK FEATURE - 100% MAIN I'D SAFE"
   ],
   "whatsappNumber": "https://wa.me/9623508876",
   "whatsappUrl": "https://wa.me/9623508876",
@@ -33,27 +33,27 @@
     "keySalesEnabled": true,
     "keyPriceINR": 199,
     "keySaleDurationDays": 30,
-    "introVideoUrl": "",
+    "introVideoUrl": "/api/public/video/gameplay_v14_1792905894809",
     "introVideoEnabled": true,
-    "introVideoTitle": "PANEL GAMEPLAY PREVIEW",
+    "introVideoTitle": "WITH PANEL GAMEPLAY",
     "introVideoButtonText": "CONTINUE",
     "introFeaturePoints": [
-      "100% Anti-Ban Protection & High-Security Bypass",
-      "Smooth Aimbot, ESP & Ultra-Low Latency Gameplay",
-      "Instant Key Activation with 1-Device Security Lock",
-      "Works on All Latest Updates with 24/7 VIP Support"
+      "100% ANTI BAN",
+      "90% DRAG HEADSHOT RATE - LIVE ENEMY LOCATION",
+      "MODE MENU ✖ PANEL ✔",
+      "10 + HACK FEATURE - 100% MAIN I'D SAFE"
     ]
   },
   "downloadHackUrl": "https://www.mediafire.com/file/fjyc9omx56r777v/M1NX_VIP.apk/file",
   "setupVideoUrl": "https://youtu.be/lWQJCX7U_3U?si=4pRzgMXvVYgR5IUT",
-  "introVideoUrl": "",
+  "introVideoUrl": "/api/public/video/gameplay_v14_1792905894809",
   "introVideoEnabled": true,
-  "introVideoTitle": "PANEL GAMEPLAY PREVIEW",
+  "introVideoTitle": "WITH PANEL GAMEPLAY",
   "introVideoButtonText": "CONTINUE",
   "keySalesEnabled": true,
   "keyPriceINR": 199,
   "keySaleDurationDays": 30,
-  "updatedAt": "2026-10-24T07:17:30.000Z",
-  "updatedBy": "Admin (Verified)",
-  "version": 10
+  "updatedAt": "2026-10-25T05:55:00.000Z",
+  "updatedBy": "Admin",
+  "version": 100
 }
