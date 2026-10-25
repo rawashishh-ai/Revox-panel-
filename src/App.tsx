@@ -73,6 +73,9 @@ export default function App() {
       if (cached) {
         const parsed = JSON.parse(cached) as SiteSettings;
         if (parsed && parsed.announcementTitle) {
+          if (!parsed.introVideoUrl || parsed.introVideoUrl.includes('gameplay_v14_1792905894809')) {
+            parsed.introVideoUrl = '/uploads/gameplay_v12_1792903967616.mp4';
+          }
           latestVersionRef.current = Number(parsed.version) || 1;
           latestUpdatedAtRef.current = parsed.updatedAt ? new Date(parsed.updatedAt).getTime() : 0;
           return parsed;
@@ -165,7 +168,20 @@ export default function App() {
           buttonSettings: incoming.buttonSettings ?? prev?.buttonSettings,
           downloadHackUrl: incoming.downloadHackUrl ?? prev?.downloadHackUrl ?? 'https://t.me/silentx_phantom_official',
           setupVideoUrl: incoming.setupVideoUrl ?? prev?.setupVideoUrl ?? 'https://www.youtube.com/',
-          introVideoUrl: incoming.introVideoUrl ?? incoming.buttonSettings?.introVideoUrl ?? prev?.introVideoUrl ?? '',
+          introVideoUrl: (() => {
+            const rawUrl =
+              incoming.introVideoUrl ??
+              incoming.buttonSettings?.introVideoUrl ??
+              prev?.introVideoUrl ??
+              '/uploads/gameplay_v12_1792903967616.mp4';
+            if (
+              !rawUrl ||
+              rawUrl.includes('gameplay_v14_1792905894809')
+            ) {
+              return '/uploads/gameplay_v12_1792903967616.mp4';
+            }
+            return rawUrl;
+          })(),
           introVideoEnabled:
             incoming.introVideoEnabled !== undefined
               ? Boolean(incoming.introVideoEnabled)
@@ -226,19 +242,34 @@ export default function App() {
     }
   }, []);
 
-  // 2. Authoritative Public Settings Endpoint & Real-Time SSE Broadcast Stream
+  // 2. Authoritative Public Settings Endpoint, Firestore Real-Time Sync & SSE Stream
   useEffect(() => {
     let active = true;
 
+    const unsubFirestore = onSnapshot(
+      doc(db, 'websiteSettings', 'main'),
+      snap => {
+        if (active && snap.exists()) {
+          applyAuthoritativeSettings(snap.data() as Partial<SiteSettings>);
+        }
+      },
+      () => {}
+    );
+
     fetch('/api/public/settings', { cache: 'no-store' })
-      .then(res => res.json())
+      .then(async res => {
+        const ct = res.headers.get('content-type') || '';
+        if (!res.ok || !ct.includes('application/json')) {
+          throw new Error('Non-JSON settings response');
+        }
+        return res.json();
+      })
       .then(data => {
         if (active && data.success && data.settings) {
           applyAuthoritativeSettings(data.settings, true);
         }
       })
-      .catch(async err => {
-        console.warn('Public settings fetch notice, checking Firestore fallback:', err);
+      .catch(async () => {
         try {
           const snap = await getDoc(doc(db, 'websiteSettings', 'main'));
           if (active && snap.exists()) {
@@ -334,6 +365,7 @@ export default function App() {
 
     return () => {
       active = false;
+      unsubFirestore();
       eventSource.close();
     };
   }, [applyAuthoritativeSettings]);

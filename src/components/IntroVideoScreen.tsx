@@ -1,11 +1,98 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 import { SiteSettings, Language } from '../types';
 
 export interface ParsedVideoSource {
   type: 'youtube' | 'gdrive' | 'vimeo' | 'streamable' | 'html5' | 'simulation';
   embedUrl?: string;
   videoUrl?: string;
+  firestoreVideoId?: string;
   isVerticalHint?: boolean;
+}
+
+const DEFAULT_BUNDLED_VIDEO_URL = '/uploads/gameplay_v12_1792903967616.mp4';
+const firestoreVideoBlobCache = new Map<string, string>();
+const firestoreVideoInFlight = new Map<string, Promise<string | null>>();
+
+function extractFirestoreVideoId(rawUrl?: string): string | null {
+  if (!rawUrl) return null;
+  const trimmed = rawUrl.trim();
+  if (trimmed.startsWith('firestore://video/')) {
+    return trimmed.slice('firestore://video/'.length).split('?')[0].replace(/\.(mp4|webm|ogg|mov)$/i, '');
+  }
+  const apiMatch = trimmed.match(/\/api\/public\/video\/([a-zA-Z0-9_-]+)/);
+  if (apiMatch && apiMatch[1]) {
+    return apiMatch[1];
+  }
+  const uploadMatch = trimmed.match(/\/uploads\/(gameplay_v[a-zA-Z0-9_-]+)\.(mp4|webm|ogg|mov)/i);
+  if (uploadMatch && uploadMatch[1]) {
+    return uploadMatch[1];
+  }
+  return null;
+}
+
+async function hydrateVideoBlobUrlFromFirestore(videoId: string): Promise<string | null> {
+  if (!videoId) return null;
+  const cached = firestoreVideoBlobCache.get(videoId);
+  if (cached) return cached;
+
+  const inflight = firestoreVideoInFlight.get(videoId);
+  if (inflight) return inflight;
+
+  const task = (async () => {
+    try {
+      const metaSnap = await getDoc(doc(db, 'videoAssets', videoId));
+      if (!metaSnap.exists()) return null;
+      const meta = metaSnap.data();
+      const totalChunks = Number(meta?.totalChunks) || 0;
+      const mimeType = typeof meta?.mimeType === 'string' && meta.mimeType ? meta.mimeType : 'video/mp4';
+      if (totalChunks <= 0 || totalChunks > 500) return null;
+
+      const byteSlices: BlobPart[] = new Array(totalChunks);
+      const BATCH_SIZE = 6;
+
+      for (let i = 0; i < totalChunks; i += BATCH_SIZE) {
+        const end = Math.min(i + BATCH_SIZE, totalChunks);
+        const batchPromises: Promise<void>[] = [];
+        for (let idx = i; idx < end; idx++) {
+          batchPromises.push(
+            (async () => {
+              const cSnap = await getDoc(doc(db, 'videoAssetChunks', `${videoId}_${idx}`));
+              if (!cSnap.exists()) {
+                throw new Error(`Missing video chunk ${idx}`);
+              }
+              const b64 = cSnap.data()?.data;
+              if (typeof b64 !== 'string') {
+                throw new Error(`Invalid video chunk ${idx}`);
+              }
+              const binaryStr = window.atob(b64);
+              const len = binaryStr.length;
+              const bytes = new Uint8Array(len);
+              for (let j = 0; j < len; j++) {
+                bytes[j] = binaryStr.charCodeAt(j);
+              }
+              byteSlices[idx] = bytes.buffer as ArrayBuffer;
+            })()
+          );
+        }
+        await Promise.all(batchPromises);
+      }
+
+      const blob = new Blob(byteSlices, { type: mimeType });
+      const blobUrl = URL.createObjectURL(blob);
+      firestoreVideoBlobCache.set(videoId, blobUrl);
+      return blobUrl;
+    } catch (err) {
+      console.warn('Firestore video hydration fallback notice:', err);
+      return null;
+    } finally {
+      firestoreVideoInFlight.delete(videoId);
+    }
+  })();
+
+  firestoreVideoInFlight.set(videoId, task);
+  return task;
 }
 
 export function resolveVideoPlayerSource(rawUrl?: string): ParsedVideoSource {
@@ -16,7 +103,17 @@ export function resolveVideoPlayerSource(rawUrl?: string): ParsedVideoSource {
     url === 'https://youtube.com/' ||
     url.startsWith('blob:')
   ) {
-    return { type: 'simulation' };
+    return { type: 'html5', videoUrl: DEFAULT_BUNDLED_VIDEO_URL };
+  }
+
+  const fsVideoId = extractFirestoreVideoId(url);
+  if (url.startsWith('firestore://video/') && fsVideoId) {
+    const cachedBlob = firestoreVideoBlobCache.get(fsVideoId);
+    return {
+      type: 'html5',
+      videoUrl: cachedBlob || `/api/public/video/${fsVideoId}`,
+      firestoreVideoId: fsVideoId
+    };
   }
 
   // 1. Direct uploaded file, cloud video endpoint, Firebase Storage URL, data URL, or explicit video extension
@@ -27,7 +124,12 @@ export function resolveVideoPlayerSource(rawUrl?: string): ParsedVideoSource {
     url.startsWith('data:video/') ||
     /\.(mp4|webm|ogg|mov|m4v)(\?.*)?$/i.test(url)
   ) {
-    return { type: 'html5', videoUrl: url };
+    const cachedBlob = fsVideoId ? firestoreVideoBlobCache.get(fsVideoId) : undefined;
+    return {
+      type: 'html5',
+      videoUrl: cachedBlob || url,
+      firestoreVideoId: fsVideoId || undefined
+    };
   }
 
   // 2. YouTube (watch?v=, youtu.be/, shorts/, embed/, live/)
@@ -92,25 +194,56 @@ export const Direct16x9VideoPlayer: React.FC<Direct16x9VideoPlayerProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [videoError, setVideoError] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
+  const [resolvedBlobUrl, setResolvedBlobUrl] = useState<string | null>(null);
+  const [usingBundledFallback, setUsingBundledFallback] = useState(false);
+  const [hydratingCloudVideo, setHydratingCloudVideo] = useState(false);
   const [naturalAspect, setNaturalAspect] = useState<number | null>(null);
 
   useEffect(() => {
     setVideoError(false);
-    setRetryCount(0);
+    setUsingBundledFallback(false);
     setNaturalAspect(null);
-  }, [videoUrl]);
+
+    const fsId = parsed.firestoreVideoId;
+    if (fsId && firestoreVideoBlobCache.has(fsId)) {
+      setResolvedBlobUrl(firestoreVideoBlobCache.get(fsId) || null);
+      return;
+    }
+    setResolvedBlobUrl(null);
+
+    // If URL is firestore://video/*, immediately hydrate from Firestore
+    if (videoUrl?.trim().startsWith('firestore://video/') && fsId) {
+      let active = true;
+      setHydratingCloudVideo(true);
+      hydrateVideoBlobUrlFromFirestore(fsId)
+        .then(blobUrl => {
+          if (!active) return;
+          if (blobUrl) {
+            setResolvedBlobUrl(blobUrl);
+          } else {
+            setUsingBundledFallback(true);
+          }
+        })
+        .finally(() => {
+          if (active) setHydratingCloudVideo(false);
+        });
+      return () => {
+        active = false;
+      };
+    }
+  }, [videoUrl, parsed.firestoreVideoId]);
 
   const effectiveVideoSrc =
-    parsed.type === 'html5' && parsed.videoUrl
-      ? retryCount > 0
-        ? `${parsed.videoUrl}${parsed.videoUrl.includes('?') ? '&' : '?'}r=${retryCount}`
-        : parsed.videoUrl
-      : undefined;
+    resolvedBlobUrl ||
+    (usingBundledFallback
+      ? DEFAULT_BUNDLED_VIDEO_URL
+      : parsed.type === 'html5'
+      ? parsed.videoUrl
+      : undefined);
 
   // Attempt unmuted autoplay first; if browser blocks unmuted autoplay, fallback to muted autoplay
   useEffect(() => {
-    if (parsed.type === 'html5' && videoRef.current && autoPlay) {
+    if (parsed.type === 'html5' && videoRef.current && autoPlay && effectiveVideoSrc) {
       const v = videoRef.current;
       v.muted = false;
       const playPromise = v.play();
@@ -127,6 +260,31 @@ export const Direct16x9VideoPlayer: React.FC<Direct16x9VideoPlayerProps> = ({
       }
     }
   }, [parsed.type, effectiveVideoSrc, autoPlay]);
+
+  const handleVideoLoadError = async () => {
+    if (hydratingCloudVideo) return;
+
+    // 1. Try hydrating video chunks directly from Firestore (works on Vercel / revoxpanel.site where /api/* is serverless/static)
+    if (parsed.firestoreVideoId && !resolvedBlobUrl) {
+      setHydratingCloudVideo(true);
+      const blobUrl = await hydrateVideoBlobUrlFromFirestore(parsed.firestoreVideoId);
+      setHydratingCloudVideo(false);
+      if (blobUrl) {
+        setResolvedBlobUrl(blobUrl);
+        setVideoError(false);
+        return;
+      }
+    }
+
+    // 2. Fall back to the bundled static gameplay MP4 in /uploads/ so the video player never shows a broken placeholder
+    if (!usingBundledFallback && effectiveVideoSrc !== DEFAULT_BUNDLED_VIDEO_URL) {
+      setUsingBundledFallback(true);
+      setVideoError(false);
+      return;
+    }
+
+    setVideoError(true);
+  };
 
   const handleLoadedMetadata = () => {
     if (!videoRef.current) return;
@@ -176,13 +334,7 @@ export const Direct16x9VideoPlayer: React.FC<Direct16x9VideoPlayerProps> = ({
               loop
               preload="auto"
               autoPlay={autoPlay}
-              onError={() => {
-                if (retryCount < 2) {
-                  setTimeout(() => setRetryCount(c => c + 1), 600);
-                } else {
-                  setVideoError(true);
-                }
-              }}
+              onError={handleVideoLoadError}
             />
             {isMuted && (
               <button

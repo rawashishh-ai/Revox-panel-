@@ -33,7 +33,7 @@
     "keySalesEnabled": true,
     "keyPriceINR": 199,
     "keySaleDurationDays": 30,
-    "introVideoUrl": "/api/public/video/gameplay_v14_1792905894809",
+    "introVideoUrl": "/uploads/gameplay_v12_1792903967616.mp4",
     "introVideoEnabled": true,
     "introVideoTitle": "WITH PANEL GAMEPLAY",
     "introVideoButtonText": "CONTINUE",
@@ -46,14 +46,14 @@
   },
   "downloadHackUrl": "https://www.mediafire.com/file/fjyc9omx56r777v/M1NX_VIP.apk/file",
   "setupVideoUrl": "https://youtu.be/lWQJCX7U_3U?si=4pRzgMXvVYgR5IUT",
-  "introVideoUrl": "/api/public/video/gameplay_v14_1792905894809",
+  "introVideoUrl": "/uploads/gameplay_v12_1792903967616.mp4",
   "introVideoEnabled": true,
   "introVideoTitle": "WITH PANEL GAMEPLAY",
   "introVideoButtonText": "CONTINUE",
   "keySalesEnabled": true,
   "keyPriceINR": 199,
   "keySaleDurationDays": 30,
-  "updatedAt": "2026-10-25T05:55:00.000Z",
+  "updatedAt": "2026-10-25T08:22:32.238Z",
   "updatedBy": "Admin",
-  "version": 100
+  "version": 106
 }

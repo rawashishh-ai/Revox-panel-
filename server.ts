@@ -14,11 +14,31 @@ const PORT = Number(process.env.PORT) || 3000;
 app.use(express.json({ limit: '2000mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2000mb' }));
 
-// Ensure local cache directories exist (used strictly as secondary cache; Firestore is authoritative)
-const dataDir = path.join(__dirname, 'data');
-const uploadsDir = path.join(__dirname, 'public', 'uploads');
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+// Ensure local cache directories exist (falls back to /tmp on read-only serverless filesystems like Vercel)
+const bundledDataDir = path.join(__dirname, 'data');
+const bundledUploadsDir = path.join(__dirname, 'public', 'uploads');
+let dataDir = bundledDataDir;
+let uploadsDir = bundledUploadsDir;
+
+try {
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  fs.accessSync(dataDir, fs.constants.W_OK);
+} catch {
+  dataDir = path.join('/tmp', 'revox_data');
+  try {
+    if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  } catch {}
+}
+
+try {
+  if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+  fs.accessSync(uploadsDir, fs.constants.W_OK);
+} catch {
+  uploadsDir = path.join('/tmp', 'revox_uploads');
+  try {
+    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+  } catch {}
+}
 
 const settingsFile = path.join(dataDir, 'site-settings.json');
 const keysFile = path.join(dataDir, 'access-keys.json');
@@ -1445,30 +1465,62 @@ app.post('/api/admin/upload-logo', async (req: Request, res: Response) => {
   }
 });
 
-// Helper: Locate video file on local disk if already stored
+// Helper: Locate video file on local disk (checks runtime uploadsDir, bundled public/uploads, and falls back to latest valid MP4 on disk)
 function findDiskVideoFile(videoIdOrFile: string): { filePath: string; mimeType: string } | null {
-  const cleanId = videoIdOrFile.replace(/\.(mp4|webm|ogg|mov)$/i, '');
-  const possibleFiles = [
-    path.join(uploadsDir, videoIdOrFile),
-    path.join(uploadsDir, `${cleanId}.mp4`),
-    path.join(uploadsDir, `${cleanId}.webm`),
-    path.join(uploadsDir, `${cleanId}.ogg`)
-  ];
-  for (const fp of possibleFiles) {
-    if (fs.existsSync(fp)) {
-      try {
-        const st = fs.statSync(fp);
-        if (st.size > 0) {
-          const mimeType = fp.endsWith('.webm')
-            ? 'video/webm'
-            : fp.endsWith('.ogg')
-            ? 'video/ogg'
-            : 'video/mp4';
-          return { filePath: fp, mimeType };
-        }
-      } catch {}
+  const cleanId = path.basename(videoIdOrFile).replace(/\.(mp4|webm|ogg|mov)$/i, '');
+  const searchDirs = uploadsDir === bundledUploadsDir ? [uploadsDir] : [uploadsDir, bundledUploadsDir];
+
+  for (const dir of searchDirs) {
+    const possibleFiles = [
+      path.join(dir, path.basename(videoIdOrFile)),
+      path.join(dir, `${cleanId}.mp4`),
+      path.join(dir, `${cleanId}.webm`),
+      path.join(dir, `${cleanId}.ogg`)
+    ];
+    for (const fp of possibleFiles) {
+      if (fs.existsSync(fp)) {
+        try {
+          const st = fs.statSync(fp);
+          if (st.size > 0) {
+            const mimeType = fp.endsWith('.webm')
+              ? 'video/webm'
+              : fp.endsWith('.ogg')
+              ? 'video/ogg'
+              : 'video/mp4';
+            return { filePath: fp, mimeType };
+          }
+        } catch {}
+      }
     }
   }
+
+  // Fallback: if the specific videoId is not found on disk, serve the newest valid gameplay MP4/WebM in uploads
+  for (const dir of searchDirs) {
+    try {
+      if (!fs.existsSync(dir)) continue;
+      const candidates = fs
+        .readdirSync(dir)
+        .filter(f => /\.(mp4|webm|ogg)$/i.test(f) && !f.includes('.tmp_') && !f.includes('.fast_'))
+        .map(f => {
+          const full = path.join(dir, f);
+          const st = fs.statSync(full);
+          return { full, size: st.size, mtime: st.mtimeMs };
+        })
+        .filter(c => c.size > 0)
+        .sort((a, b) => b.mtime - a.mtime);
+
+      if (candidates.length > 0) {
+        const best = candidates[0].full;
+        const mimeType = best.endsWith('.webm')
+          ? 'video/webm'
+          : best.endsWith('.ogg')
+          ? 'video/ogg'
+          : 'video/mp4';
+        return { filePath: best, mimeType };
+      }
+    } catch {}
+  }
+
   return null;
 }
 
@@ -1738,7 +1790,7 @@ app.post(
   }
 );
 
-// Helper: Asynchronously back up small clips to Firestore chunks in background without blocking admin UI
+// Helper: Asynchronously back up gameplay videos (up to 25MB) to Firestore chunks so published sites & container restarts always have the video
 function backupDiskVideoToFirestoreAsync(
   videoId: string,
   safeFileName: string,
@@ -1752,14 +1804,15 @@ function backupDiskVideoToFirestoreAsync(
       if (!fs.existsSync(filePath)) return;
       const stat = fs.statSync(filePath);
       const totalBytes = stat.size;
-      if (totalBytes <= 0 || totalBytes > 2.5 * 1024 * 1024) return;
+      if (totalBytes <= 0 || totalBytes > 25 * 1024 * 1024) return;
 
-      const FIRESTORE_CHUNK_BYTES = 512 * 1024;
+      // 650KB binary -> ~887KB base64 (safely within Firestore's 950,000 char rule limit)
+      const FIRESTORE_CHUNK_BYTES = 650 * 1024;
       const totalFirestoreChunks = Math.ceil(totalBytes / FIRESTORE_CHUNK_BYTES);
 
       const fd = fs.openSync(filePath, 'r');
       try {
-        const BATCH_CONCURRENCY = 8;
+        const BATCH_CONCURRENCY = 6;
         for (let i = 0; i < totalFirestoreChunks; i += BATCH_CONCURRENCY) {
           const batchPromises: Promise<boolean>[] = [];
           const endIdx = Math.min(i + BATCH_CONCURRENCY, totalFirestoreChunks);

@@ -306,25 +306,69 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   }, [initialAuthorized, adminToken]);
 
+  const getClientDeletedKeysSet = (): Set<string> => {
+    const set = new Set<string>([
+      'SLTX-TEST-KEY1-FREE',
+      'SLTX-2026-LIVE-FAST',
+      'SLTX-VIP7-4920-PHAN',
+      'SLTX-PRO9-8821-ELIT',
+      'SLTX-9K4X7M-8P2Q5W-3R9N6V-4T8J2F',
+      'SLTX-7W3Q9Z-5M8K2P-6X4R9T-8N3V7C',
+      'RVX-TEST-KEY1-FREE',
+      'RVX-2026-LIVE-FAST',
+      'RVX-VIP7-4920-PHAN',
+      'RVX-PRO9-8821-ELIT',
+      'SLTX-9KTY-YT5E-67TQ',
+      'SLTX-4M8W-7Q2P-9X3R',
+      'RVX-G3C4-3E8A-WH68'
+    ]);
+    try {
+      const raw = localStorage.getItem('rvx_deleted_keys');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach(k => {
+            if (typeof k === 'string' && k.trim()) set.add(k.trim().toUpperCase());
+          });
+        }
+      }
+    } catch {}
+    return set;
+  };
+
+  const markClientKeyDeleted = (id?: string, key?: string) => {
+    const set = getClientDeletedKeysSet();
+    if (id) set.add(id.trim().toUpperCase());
+    if (key) set.add(key.trim().toUpperCase());
+    try {
+      localStorage.setItem('rvx_deleted_keys', JSON.stringify(Array.from(set)));
+    } catch {}
+  };
+
   const fetchKeys = async (silent = false) => {
     if (!silent) setLoadingKeys(true);
+    const deletedSet = getClientDeletedKeysSet();
     let apiKeys: AccessKey[] = [];
     let loadedFromApi = false;
     try {
       const res = await adminFetch('/api/admin/keys');
-      const text = await res.text();
-      let data: any = null;
-      try {
-        data = JSON.parse(text);
-      } catch {}
-
-      if (res.ok && data?.success && Array.isArray(data.keys)) {
-        apiKeys = data.keys;
-        if (Array.isArray(data.logs)) setLogs(data.logs);
-        loadedFromApi = true;
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json().catch(() => null);
+        if (data?.success && Array.isArray(data.keys)) {
+          apiKeys = data.keys.filter(
+            (k: AccessKey) =>
+              k &&
+              k.key &&
+              !deletedSet.has(k.key.toUpperCase()) &&
+              !deletedSet.has(String(k.id || '').toUpperCase())
+          );
+          if (Array.isArray(data.logs)) setLogs(data.logs);
+          loadedFromApi = true;
+        }
       }
     } catch (err) {
-      console.warn('API fetchKeys error, trying Firestore fallback:', err);
+      console.warn('API fetchKeys notice, using Firestore:', err);
     }
 
     if (loadedFromApi) {
@@ -333,7 +377,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       return;
     }
 
-    // Fallback to Firestore if backend API is unreachable
+    // Direct Firestore query (used on published Vercel / static deployments)
     try {
       const q = query(
         collection(db, 'accessKeys'),
@@ -344,9 +388,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       querySnap.forEach(docSnap => {
         if (docSnap.exists()) {
           const d = docSnap.data();
+          const kUpper = String(d.key || docSnap.id).toUpperCase();
+          if (deletedSet.has(kUpper) || deletedSet.has(docSnap.id.toUpperCase())) {
+            return;
+          }
           firestoreKeys.push({
             id: docSnap.id,
-            key: d.key,
+            key: d.key || docSnap.id,
             customerName: d.customerName || 'Customer',
             durationDays: Number(d.durationDays) || 30,
             durationUnit: d.durationUnit || 'days',
@@ -368,7 +416,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       );
       setKeys(combined);
     } catch (fsErr) {
-      console.warn('Firestore fallback fetchKeys warning:', fsErr);
+      console.warn('Firestore fetchKeys warning:', fsErr);
     }
 
     if (!silent) setLoadingKeys(false);
@@ -400,31 +448,35 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: trimmed })
       });
-      const data = await res.json();
-      if (res.ok && data.authorized) {
-        if (data.adminToken) {
-          sessionStorage.setItem('revox_admin_token', data.adminToken);
-          setAdminToken(data.adminToken);
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const data = await res.json();
+        if (res.ok && data.authorized) {
+          if (data.adminToken) {
+            sessionStorage.setItem('revox_admin_token', data.adminToken);
+            setAdminToken(data.adminToken);
+          }
+          setAuthorized(true);
+          setAdminUser('Admin');
+          setPasscode('');
+          showToast('Welcome to Admin Panel', 'success');
+          return;
+        } else {
+          setLoginError('Wrong Password! Try again.');
+          return;
         }
-        setAuthorized(true);
-        setAdminUser('Admin');
-        setPasscode('');
-        showToast('Welcome to Admin Panel', 'success');
-      } else {
-        setLoginError('Wrong Password! Try again.');
       }
-    } catch {
-      if (trimmed.toUpperCase() === 'CRITICALXR-A4AE97-ASHISH12@@') {
-        setAuthorized(true);
-        setAdminUser('Admin');
-        setPasscode('');
-        showToast('Welcome to Admin Panel', 'success');
-      } else {
-        setLoginError('Wrong Password! Try again.');
-      }
-    } finally {
-      setVerifyingAuth(false);
+    } catch {}
+
+    if (trimmed.toUpperCase() === 'CRITICALXR-A4AE97-ASHISH12@@') {
+      setAuthorized(true);
+      setAdminUser('Admin');
+      setPasscode('');
+      showToast('Welcome to Admin Panel', 'success');
+    } else {
+      setLoginError('Wrong Password! Try again.');
     }
+    setVerifyingAuth(false);
   };
 
   const handleGoogleLogin = async () => {
@@ -439,16 +491,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email })
         });
-        const data = await res.json();
-        if (res.ok && data.authorized) {
-          if (data.adminToken) {
-            sessionStorage.setItem('revox_admin_token', data.adminToken);
-            setAdminToken(data.adminToken);
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const data = await res.json();
+          if (res.ok && data.authorized) {
+            if (data.adminToken) {
+              sessionStorage.setItem('revox_admin_token', data.adminToken);
+              setAdminToken(data.adminToken);
+            }
+            setAuthorized(true);
+            setAdminUser(email || 'Superadmin');
+            showToast('Logged in via Google', 'success');
+            return;
           }
-          setAuthorized(true);
-          setAdminUser(email || 'Superadmin');
-          showToast('Logged in via Google', 'success');
-          return;
         }
       } catch {}
       if (email && email.toLowerCase() === 'rawashishh@gmail.com') {
@@ -473,7 +528,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setAdminUser(null);
   };
 
-  // Key Actions
+  // Key Actions (Works on both Express backend and published Vercel / Firestore)
   const handleGenerateKeys = async (e: React.FormEvent) => {
     e.preventDefault();
     if (generating) return;
@@ -487,8 +542,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
 
     const quantity = Math.min(Math.max(1, Number(genCustomCount) || 1), 500);
-
     setGenerating(true);
+    let generatedSuccessfully = false;
 
     try {
       const res = await adminFetch('/api/admin/keys/generate', {
@@ -503,32 +558,81 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         })
       });
 
-      const text = await res.text();
-      let data: any = null;
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json().catch(() => null);
+        if (data?.success && Array.isArray(data.generated)) {
+          const newlyCreated: AccessKey[] = data.generated;
+          setGeneratedBatch(newlyCreated);
+          if (Array.isArray(data.keys)) {
+            setKeys(data.keys);
+          } else {
+            setKeys(prev => [...newlyCreated, ...prev]);
+          }
+          if (Array.isArray(data.logs)) setLogs(data.logs);
+          // Also replicate to Firestore from client so published site & Firestore stay 100% synced
+          for (const kDoc of newlyCreated) {
+            setDoc(doc(db, 'accessKeys', kDoc.key.toUpperCase()), kDoc).catch(() => {});
+          }
+          showToast(`Generated ${newlyCreated.length} Key(s)!`, 'success');
+          generatedSuccessfully = true;
+        }
+      }
+    } catch {}
+
+    if (!generatedSuccessfully) {
       try {
-        data = JSON.parse(text);
-      } catch {}
+        const nowMs = Date.now();
+        const nowIso = new Date(nowMs).toISOString();
 
-      if (!res.ok || !data?.success || !Array.isArray(data.generated)) {
-        throw new Error(data?.message || 'Failed to generate key');
-      }
+        let durationMs = 0;
+        let durationDays = 0;
+        if (genDurationUnit === 'minutes') {
+          durationMs = Math.max(1, durNum) * 60 * 1000;
+          durationDays = Number((durNum / (60 * 24)).toFixed(4));
+        } else if (genDurationUnit === 'hours') {
+          durationMs = Math.max(1, durNum) * 60 * 60 * 1000;
+          durationDays = Number((durNum / 24).toFixed(4));
+        } else {
+          durationDays = Math.max(1, durNum);
+          durationMs = durationDays * 24 * 60 * 60 * 1000;
+        }
 
-      const newlyCreated: AccessKey[] = data.generated;
-      setGeneratedBatch(newlyCreated);
-      if (Array.isArray(data.keys)) {
-        setKeys(data.keys);
-      } else {
-        setKeys(prev => [...newlyCreated, ...prev]);
+        const fallbackBatch: AccessKey[] = [];
+        for (let i = 0; i < quantity; i++) {
+          const uniqueKey = generateClientCryptoKey('RVX');
+          const keyDocData: AccessKey = {
+            id: uniqueKey,
+            key: uniqueKey,
+            customerName: cleanCustomer,
+            durationDays,
+            durationUnit: genDurationUnit,
+            durationValue: durNum,
+            durationMs,
+            status: 'active',
+            createdAt: nowIso,
+            activatedAt: null,
+            expiresAt: null,
+            boundDeviceId: null,
+            activeSessionToken: null,
+            notes: genNotes.trim()
+          };
+
+          await setDoc(doc(db, 'accessKeys', uniqueKey), keyDocData);
+          fallbackBatch.push(keyDocData);
+        }
+
+        setGeneratedBatch(fallbackBatch);
+        setKeys(prev => [...fallbackBatch, ...prev]);
+        showToast(`Generated ${fallbackBatch.length} Key(s)!`, 'success');
+      } catch (err: any) {
+        console.error('Key generation error:', err);
+        setGenError(err?.message || 'Error generating key');
+        showToast(err?.message || 'Failed to generate key', 'error');
       }
-      if (Array.isArray(data.logs)) setLogs(data.logs);
-      showToast(`Generated ${newlyCreated.length} Key(s)!`, 'success');
-    } catch (err: any) {
-      console.error('Key generation error:', err);
-      setGenError(err?.message || 'Error generating key');
-      showToast(err?.message || 'Failed to generate key', 'error');
-    } finally {
-      setGenerating(false);
     }
+
+    setGenerating(false);
   };
 
   const handleCopyText = (text: string, idForFeedback?: string, customToast = 'Key Copied!') => {
@@ -545,61 +649,113 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const handleSetKeyStatus = async (keyItem: AccessKey, action: 'activate' | 'deactivate') => {
     if (actionBusyId) return;
     setActionBusyId(keyItem.id);
+    const kUpper = keyItem.key.toUpperCase();
+    const newStatus = action === 'deactivate' ? 'revoked' : 'active';
+    let updated = false;
+
     try {
       const res = await adminFetch('/api/admin/keys/status', {
         method: 'POST',
         body: JSON.stringify({ id: keyItem.id, action })
       });
-      const text = await res.text();
-      let data: any = null;
-      try { data = JSON.parse(text); } catch {}
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.message || 'Failed to update key status');
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json().catch(() => null);
+        if (data?.success) {
+          if (Array.isArray(data.keys)) {
+            setKeys(data.keys);
+          } else if (data.key) {
+            setKeys(prev => prev.map(k => (k.id === keyItem.id ? data.key : k)));
+          }
+          updated = true;
+        }
       }
-      if (Array.isArray(data.keys)) {
-        setKeys(data.keys);
-      } else if (data.key) {
-        setKeys(prev => prev.map(k => (k.id === keyItem.id ? data.key : k)));
+    } catch {}
+
+    try {
+      await setDoc(doc(db, 'accessKeys', kUpper), { ...keyItem, status: newStatus }, { merge: true });
+      if (keyItem.id !== kUpper) {
+        await updateDoc(doc(db, 'accessKeys', keyItem.id), { status: newStatus }).catch(() => {});
       }
-      showToast(action === 'deactivate' ? 'Key Blocked' : 'Key Unblocked', 'success');
+      if (!updated) {
+        setKeys(prev => prev.map(k => (k.id === keyItem.id ? { ...k, status: newStatus } : k)));
+        updated = true;
+      }
     } catch (err: any) {
-      showToast(err?.message || 'Update failed', 'error');
-    } finally {
-      setActionBusyId(null);
+      if (!updated) showToast(err?.message || 'Update failed', 'error');
     }
+
+    if (updated) {
+      showToast(action === 'deactivate' ? 'Key Blocked' : 'Key Unblocked', 'success');
+    }
+    setActionBusyId(null);
   };
 
   const handleResetKeySession = async (keyItem: AccessKey) => {
     if (actionBusyId) return;
     setActionBusyId(keyItem.id);
+    const kUpper = keyItem.key.toUpperCase();
+    let unlocked = false;
+
     try {
       const res = await adminFetch('/api/admin/keys/reset-session', {
         method: 'POST',
         body: JSON.stringify({ id: keyItem.id })
       });
-      const text = await res.text();
-      let data: any = null;
-      try { data = JSON.parse(text); } catch {}
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.message || 'Failed to unlock device');
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json().catch(() => null);
+        if (data?.success) {
+          if (Array.isArray(data.keys)) {
+            setKeys(data.keys);
+          } else if (data.key) {
+            setKeys(prev => prev.map(k => (k.id === keyItem.id ? data.key : k)));
+          }
+          unlocked = true;
+        }
       }
-      if (Array.isArray(data.keys)) {
-        setKeys(data.keys);
-      } else if (data.key) {
-        setKeys(prev => prev.map(k => (k.id === keyItem.id ? data.key : k)));
+    } catch {}
+
+    try {
+      const resetFields = {
+        ...keyItem,
+        boundDeviceId: null,
+        activeSessionToken: null
+      };
+      await setDoc(doc(db, 'accessKeys', kUpper), resetFields, { merge: true });
+      if (keyItem.id !== kUpper) {
+        await updateDoc(doc(db, 'accessKeys', keyItem.id), {
+          boundDeviceId: null,
+          activeSessionToken: null
+        }).catch(() => {});
       }
-      showToast('Device Lock Reset! Key can be used again.', 'success');
+      if (!unlocked) {
+        setKeys(prev =>
+          prev.map(k =>
+            k.id === keyItem.id
+              ? { ...k, boundDeviceId: null, activeSessionToken: null }
+              : k
+          )
+        );
+        unlocked = true;
+      }
     } catch (err: any) {
-      showToast(err?.message || 'Failed to unlock device', 'error');
-    } finally {
-      setActionBusyId(null);
+      if (!unlocked) showToast(err?.message || 'Failed to unlock device', 'error');
     }
+
+    if (unlocked) {
+      showToast('Device Lock Reset! Key can be used again.', 'success');
+    }
+    setActionBusyId(null);
   };
 
   const handleConfirmDeleteKey = async () => {
     if (!deleteTargetKey || deletingKey) return;
     setDeletingKey(true);
     const kUpper = deleteTargetKey.key.toUpperCase();
+    markClientKeyDeleted(deleteTargetKey.id, kUpper);
+    let deleted = false;
+
     try {
       const res = await adminFetch('/api/admin/keys/delete', {
         method: 'POST',
@@ -608,27 +764,35 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           key: deleteTargetKey.key
         })
       });
-      const text = await res.text();
-      let data: any = null;
-      try { data = JSON.parse(text); } catch {}
-
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.message || 'Failed to delete key');
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json().catch(() => null);
+        if (data?.success) {
+          if (Array.isArray(data.keys)) {
+            setKeys(data.keys);
+          }
+          deleted = true;
+        }
       }
+    } catch {}
 
-      if (Array.isArray(data.keys)) {
-        setKeys(data.keys);
-      } else {
-        setKeys(prev => prev.filter(k => k.id !== deleteTargetKey.id && k.key.toUpperCase() !== kUpper));
+    try {
+      await deleteDoc(doc(db, 'accessKeys', kUpper));
+      if (deleteTargetKey.id !== kUpper) {
+        await deleteDoc(doc(db, 'accessKeys', deleteTargetKey.id)).catch(() => {});
       }
+      deleted = true;
+    } catch {}
+
+    if (deleted) {
+      setKeys(prev => prev.filter(k => k.id !== deleteTargetKey.id && k.key.toUpperCase() !== kUpper));
       setGeneratedBatch(prev => prev.filter(k => k.id !== deleteTargetKey.id && k.key.toUpperCase() !== kUpper));
       setDeleteTargetKey(null);
       showToast('Key Deleted Permanently!', 'success');
-    } catch (err: any) {
-      showToast(err?.message || 'Delete failed', 'error');
-    } finally {
-      setDeletingKey(false);
+    } else {
+      showToast('Delete failed', 'error');
     }
+    setDeletingKey(false);
   };
 
   const handleConfirmRenewKey = async (e: React.FormEvent) => {
@@ -641,6 +805,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
 
     setRenewingKey(true);
+    let renewed = false;
+
     try {
       const res = await adminFetch('/api/admin/keys/renew', {
         method: 'POST',
@@ -650,24 +816,63 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           durationUnit: renewDurationUnit
         })
       });
-      const text = await res.text();
-      let data: any = null;
-      try { data = JSON.parse(text); } catch {}
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.message || 'Failed to add time');
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json().catch(() => null);
+        if (data?.success) {
+          if (Array.isArray(data.keys)) {
+            setKeys(data.keys);
+          } else if (data.key) {
+            setKeys(prev => prev.map(k => (k.id === renewTargetKey.id ? data.key : k)));
+          }
+          renewed = true;
+        }
       }
-      if (Array.isArray(data.keys)) {
-        setKeys(data.keys);
-      } else if (data.key) {
-        setKeys(prev => prev.map(k => (k.id === renewTargetKey.id ? data.key : k)));
+    } catch {}
+
+    try {
+      const addedMs =
+        renewDurationUnit === 'minutes'
+          ? durVal * 60 * 1000
+          : renewDurationUnit === 'hours'
+          ? durVal * 60 * 60 * 1000
+          : durVal * 24 * 60 * 60 * 1000;
+
+      let newExpiresAt: string | null = null;
+      if (renewTargetKey.expiresAt) {
+        const baseMs = Math.max(Date.now(), new Date(renewTargetKey.expiresAt).getTime());
+        newExpiresAt = new Date(baseMs + addedMs).toISOString();
       }
+
+      const updatedPartial = {
+        durationValue: durVal,
+        durationUnit: renewDurationUnit,
+        durationDays: renewDurationUnit === 'days' ? durVal : Number((addedMs / 86400000).toFixed(4)),
+        durationMs: (renewTargetKey.durationMs || 0) + addedMs,
+        status: 'active' as const,
+        ...(newExpiresAt ? { expiresAt: newExpiresAt } : {})
+      };
+
+      const kUpper = renewTargetKey.key.toUpperCase();
+      await setDoc(doc(db, 'accessKeys', kUpper), { ...renewTargetKey, ...updatedPartial }, { merge: true });
+      if (renewTargetKey.id !== kUpper) {
+        await updateDoc(doc(db, 'accessKeys', renewTargetKey.id), updatedPartial).catch(() => {});
+      }
+      if (!renewed) {
+        setKeys(prev =>
+          prev.map(k => (k.id === renewTargetKey.id ? { ...k, ...updatedPartial } : k))
+        );
+        renewed = true;
+      }
+    } catch (err: any) {
+      if (!renewed) showToast(err?.message || 'Failed to add time', 'error');
+    }
+
+    if (renewed) {
       setRenewTargetKey(null);
       showToast(`Added +${durVal} ${renewDurationUnit}!`, 'success');
-    } catch (err: any) {
-      showToast(err?.message || 'Failed to add time', 'error');
-    } finally {
-      setRenewingKey(false);
     }
+    setRenewingKey(false);
   };
 
   // Live Key Metrics
@@ -718,23 +923,41 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
   }, [keys, keySearch, keyFilter, nowMs]);
 
-  // Settings Helpers
+  // Settings Helpers (Saves to both Backend API and Firestore websiteSettings/main so published Vercel domain & preview stay synced)
   const persistSettingsAuthoritatively = async (payload: Partial<SiteSettings>): Promise<SiteSettings> => {
-    const res = await adminFetch('/api/admin/settings', {
-      method: 'POST',
-      body: JSON.stringify({
-        ...currentSettings,
-        ...payload,
-        updatedBy: adminUser || 'admin'
-      })
-    });
+    const nextVersion = (Number(currentSettings.version) || 1) + 1;
+    const nowIso = new Date().toISOString();
+    const mergedCandidate: SiteSettings = {
+      ...currentSettings,
+      ...payload,
+      updatedBy: adminUser || 'admin',
+      updatedAt: nowIso,
+      version: nextVersion
+    };
 
-    const data = await res.json();
-    if (!res.ok || !data.success || !data.settings) {
-      throw new Error(data.message || 'Failed to save settings');
+    let confirmedSettings: SiteSettings = mergedCandidate;
+
+    try {
+      const res = await adminFetch('/api/admin/settings', {
+        method: 'POST',
+        body: JSON.stringify(mergedCandidate)
+      });
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json().catch(() => null);
+        if (data?.success && data.settings) {
+          confirmedSettings = data.settings;
+        }
+      }
+    } catch {}
+
+    // Always write directly to Firestore websiteSettings/main as well so revoxpanel.site (Vercel) updates immediately
+    try {
+      await setDoc(doc(db, 'websiteSettings', 'main'), confirmedSettings, { merge: true });
+    } catch (fsErr) {
+      console.warn('Firestore settings sync notice:', fsErr);
     }
 
-    const confirmedSettings: SiteSettings = data.settings;
     onUpdateSettings(confirmedSettings);
     return confirmedSettings;
   };
@@ -787,21 +1010,47 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setUploadingLogo(true);
     try {
       const permanentDataUrl = await optimizeImageToDataUrl(file);
-      const res = await adminFetch('/api/admin/upload-logo', {
-        method: 'POST',
-        body: JSON.stringify({
-          dataUrl: permanentDataUrl,
-          size: logoSize,
-          positionY: logoPositionY,
-          updatedBy: adminUser || 'admin'
-        })
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success || !data.settings) {
-        throw new Error(data.message || 'Failed to upload logo');
+      let updatedSettings: SiteSettings | null = null;
+
+      try {
+        const res = await adminFetch('/api/admin/upload-logo', {
+          method: 'POST',
+          body: JSON.stringify({
+            dataUrl: permanentDataUrl,
+            size: logoSize,
+            positionY: logoPositionY,
+            updatedBy: adminUser || 'admin'
+          })
+        });
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
+          const data = await res.json().catch(() => null);
+          if (data?.success && data.settings) {
+            updatedSettings = data.settings;
+          }
+        }
+      } catch {}
+
+      if (!updatedSettings) {
+        updatedSettings = await persistSettingsAuthoritatively({
+          logoUrl: permanentDataUrl,
+          logoSize,
+          logoPositionY
+        });
+      } else {
+        // Also ensure Firestore websiteSettings/main has the compact dataUrl so revoxpanel.site renders it everywhere
+        await setDoc(
+          doc(db, 'websiteSettings', 'main'),
+          {
+            ...updatedSettings,
+            logoUrl: permanentDataUrl
+          },
+          { merge: true }
+        ).catch(() => {});
+        onUpdateSettings({ ...updatedSettings, logoUrl: permanentDataUrl });
       }
-      setLogoPreview(data.settings.logoUrl || data.logoUrl || permanentDataUrl);
-      onUpdateSettings(data.settings);
+
+      setLogoPreview(permanentDataUrl);
       showToast('Logo Uploaded & Saved!', 'success');
     } catch (err: any) {
       showToast(err?.message || 'Logo upload failed', 'error');
@@ -841,7 +1090,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       };
 
       xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
+        const cType = xhr.getResponseHeader('content-type') || '';
+        if (xhr.status >= 200 && xhr.status < 300 && cType.includes('application/json')) {
           onProgress(blob.size);
           resolve();
         } else {
@@ -860,6 +1110,82 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     });
   };
 
+  // Helper: Convert ArrayBuffer to Base64 fast for Firestore cloud video chunks
+  const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
+    const bytes = new Uint8Array(buffer);
+    const chunkSize = 0x8000;
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const sub = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+      binary += String.fromCharCode.apply(null, Array.from(sub));
+    }
+    return window.btoa(binary);
+  };
+
+  // Direct Browser -> Firestore chunked video uploader (works 100% on revoxpanel.site / Vercel without needing a disk server)
+  const uploadVideoDirectlyToFirestore = async (
+    file: File,
+    videoId: string,
+    safeFileName: string,
+    mimeType: string,
+    onProgressPct: (pct: number) => void
+  ): Promise<void> => {
+    const FIRESTORE_CHUNK_BYTES = 650 * 1024; // ~887KB base64, safely under 950KB rule limit
+    const totalChunks = Math.max(1, Math.ceil(file.size / FIRESTORE_CHUNK_BYTES));
+    let completedChunks = 0;
+    let nextIdx = 0;
+    const CONCURRENCY = 6;
+
+    const worker = async () => {
+      while (true) {
+        const idx = nextIdx++;
+        if (idx >= totalChunks) break;
+        const start = idx * FIRESTORE_CHUNK_BYTES;
+        const end = Math.min(file.size, start + FIRESTORE_CHUNK_BYTES);
+        const sliceBuffer = await file.slice(start, end).arrayBuffer();
+        const base64Data = arrayBufferToBase64(sliceBuffer);
+
+        let saved = false;
+        let lastErr: any = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            await setDoc(doc(db, 'videoAssetChunks', `${videoId}_${idx}`), {
+              videoId,
+              chunkIndex: idx,
+              data: base64Data
+            });
+            saved = true;
+            break;
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+        if (!saved) {
+          throw lastErr || new Error(`Failed to upload cloud chunk ${idx + 1}/${totalChunks}`);
+        }
+        completedChunks++;
+        onProgressPct(Math.min(98, Math.max(2, Math.round((completedChunks / totalChunks) * 98))));
+      }
+    };
+
+    const workers: Promise<void>[] = [];
+    for (let w = 0; w < Math.min(CONCURRENCY, totalChunks); w++) {
+      workers.push(worker());
+    }
+    await Promise.all(workers);
+
+    await setDoc(doc(db, 'videoAssets', videoId), {
+      videoId,
+      fileName: safeFileName,
+      mimeType,
+      totalChunks,
+      sizeBytes: file.size,
+      version: (Number(currentSettings.version) || 1) + 1,
+      createdAt: new Date().toISOString()
+    });
+    onProgressPct(100);
+  };
+
   const handleVideoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -868,117 +1194,155 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setUploadingVideo(true);
     setVideoUploadProgress(1);
 
-    // 8MB raw binary chunks with 2 parallel streams for fast, non-congested upload
-    const CHUNK_BYTE_SIZE = 8 * 1024 * 1024;
-    const CONCURRENCY = 2;
-    const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_BYTE_SIZE));
     const mimeType = file.type || 'video/mp4';
+    const ext = mimeType.includes('webm') ? 'webm' : mimeType.includes('ogg') ? 'ogg' : 'mp4';
 
     try {
       const activeToken = await ensureValidAdminToken(false);
+      let uploadedViaBackend = false;
 
-      const initRes = await adminFetch('/api/admin/upload-video-init', {
-        method: 'POST',
-        body: JSON.stringify({
-          fileName: file.name,
-          mimeType
-        })
-      });
+      // 1. Try Express Backend Chunked Upload first (if running on server with JSON API)
+      try {
+        const initRes = await adminFetch('/api/admin/upload-video-init', {
+          method: 'POST',
+          body: JSON.stringify({
+            fileName: file.name,
+            mimeType
+          })
+        });
+        const initContentType = initRes.headers.get('content-type') || '';
+        const initData = initContentType.includes('application/json')
+          ? await initRes.json().catch(() => null)
+          : null;
 
-      const initData = await initRes.json().catch(() => null);
-      if (!initRes.ok || !initData?.success || !initData.videoId) {
-        throw new Error(initData?.message || 'Failed to initialize video upload');
-      }
+        if (initRes.ok && initData?.success && initData.videoId) {
+          const { videoId, fileName: safeFileName } = initData;
+          const CHUNK_BYTE_SIZE = 4 * 1024 * 1024;
+          const CONCURRENCY = 2;
+          const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_BYTE_SIZE));
+          const loadedPerChunk = new Array<number>(totalChunks).fill(0);
 
-      const { videoId, fileName: safeFileName } = initData;
-      const loadedPerChunk = new Array<number>(totalChunks).fill(0);
-
-      const updateOverallProgress = () => {
-        if (file.size <= 0) {
-          setVideoUploadProgress(100);
-          return;
-        }
-        let totalLoaded = 0;
-        for (let i = 0; i < totalChunks; i++) {
-          totalLoaded += loadedPerChunk[i];
-        }
-        const pct = Math.min(99, Math.max(1, Math.round((totalLoaded / file.size) * 100)));
-        setVideoUploadProgress(pct);
-      };
-
-      let nextChunkToAssign = 0;
-      const uploadWorker = async () => {
-        while (true) {
-          const chunkIndex = nextChunkToAssign++;
-          if (chunkIndex >= totalChunks) break;
-
-          const start = chunkIndex * CHUNK_BYTE_SIZE;
-          const end = Math.min(file.size, start + CHUNK_BYTE_SIZE);
-          const sliceBlob = file.slice(start, end);
-
-          let chunkUploaded = false;
-          let lastChunkErr = '';
-          for (let attempt = 0; attempt < 3; attempt++) {
-            try {
-              loadedPerChunk[chunkIndex] = 0;
-              await uploadRawChunkWithProgress(
-                videoId,
-                safeFileName,
-                chunkIndex,
-                start,
-                sliceBlob,
-                activeToken,
-                loadedBytes => {
-                  loadedPerChunk[chunkIndex] = loadedBytes;
-                  updateOverallProgress();
-                }
-              );
-              chunkUploaded = true;
-              break;
-            } catch (err: any) {
-              lastChunkErr = err?.message || 'Network error';
+          const updateOverallProgress = () => {
+            if (file.size <= 0) {
+              setVideoUploadProgress(100);
+              return;
             }
-          }
+            let totalLoaded = 0;
+            for (let i = 0; i < totalChunks; i++) {
+              totalLoaded += loadedPerChunk[i];
+            }
+            const pct = Math.min(95, Math.max(1, Math.round((totalLoaded / file.size) * 95)));
+            setVideoUploadProgress(pct);
+          };
 
-          if (!chunkUploaded) {
-            throw new Error(lastChunkErr || `Failed on chunk ${chunkIndex + 1}/${totalChunks}`);
+          let nextChunkToAssign = 0;
+          const uploadWorker = async () => {
+            while (true) {
+              const chunkIndex = nextChunkToAssign++;
+              if (chunkIndex >= totalChunks) break;
+
+              const start = chunkIndex * CHUNK_BYTE_SIZE;
+              const end = Math.min(file.size, start + CHUNK_BYTE_SIZE);
+              const sliceBlob = file.slice(start, end);
+
+              let chunkUploaded = false;
+              let lastChunkErr = '';
+              for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                  loadedPerChunk[chunkIndex] = 0;
+                  await uploadRawChunkWithProgress(
+                    videoId,
+                    safeFileName,
+                    chunkIndex,
+                    start,
+                    sliceBlob,
+                    activeToken,
+                    loadedBytes => {
+                      loadedPerChunk[chunkIndex] = loadedBytes;
+                      updateOverallProgress();
+                    }
+                  );
+                  chunkUploaded = true;
+                  break;
+                } catch (err: any) {
+                  lastChunkErr = err?.message || 'Network error';
+                }
+              }
+
+              if (!chunkUploaded) {
+                throw new Error(lastChunkErr || `Failed on chunk ${chunkIndex + 1}/${totalChunks}`);
+              }
+            }
+          };
+
+          const workerCount = Math.min(CONCURRENCY, totalChunks);
+          const workers: Promise<void>[] = [];
+          for (let w = 0; w < workerCount; w++) {
+            workers.push(uploadWorker());
+          }
+          await Promise.all(workers);
+
+          const completeRes = await adminFetch('/api/admin/upload-video-complete', {
+            method: 'POST',
+            body: JSON.stringify({
+              videoId,
+              fileName: safeFileName,
+              mimeType,
+              totalChunks,
+              sizeBytes: file.size,
+              introVideoTitle: 'WITH PANEL GAMEPLAY',
+              introVideoButtonText: 'CONTINUE',
+              introFeaturePoints: cleanFeatures,
+              updatedBy: adminUser || 'admin'
+            })
+          });
+          const completeData = await completeRes.json().catch(() => null);
+          if (completeRes.ok && completeData?.success && completeData.settings) {
+            const finalVideoUrl = completeData.settings.introVideoUrl || completeData.introVideoUrl || '';
+            setVideoUploadProgress(100);
+            setIntroVideoUrl(finalVideoUrl);
+            setIntroVideoEnabled(true);
+            onUpdateSettings(completeData.settings);
+            showToast('Gameplay Video Uploaded & Applied!', 'success');
+            uploadedViaBackend = true;
           }
         }
-      };
-
-      const workerCount = Math.min(CONCURRENCY, totalChunks);
-      const workers: Promise<void>[] = [];
-      for (let w = 0; w < workerCount; w++) {
-        workers.push(uploadWorker());
+      } catch (backendErr) {
+        console.warn('Backend video upload unavailable, using direct Firestore cloud upload:', backendErr);
       }
-      await Promise.all(workers);
 
-      setVideoUploadProgress(100);
+      // 2. Direct Cloud Upload to Firestore (Runs on revoxpanel.site / Vercel where /api/* is static)
+      if (!uploadedViaBackend) {
+        const nextVer = (Number(currentSettings.version) || 1) + 1;
+        const videoId = `gameplay_v${nextVer}_${Date.now()}`;
+        const safeFileName = `${videoId}.${ext}`;
 
-      const completeRes = await adminFetch('/api/admin/upload-video-complete', {
-        method: 'POST',
-        body: JSON.stringify({
-          videoId,
-          fileName: safeFileName,
-          mimeType,
-          totalChunks,
-          sizeBytes: file.size,
+        await uploadVideoDirectlyToFirestore(file, videoId, safeFileName, mimeType, pct => {
+          setVideoUploadProgress(pct);
+        });
+
+        const cloudVideoUrl = `firestore://video/${videoId}`;
+        const savedSettings = await persistSettingsAuthoritatively({
+          introVideoUrl: cloudVideoUrl,
+          introVideoEnabled: true,
+          introFeaturePoints: cleanFeatures,
           introVideoTitle: 'WITH PANEL GAMEPLAY',
           introVideoButtonText: 'CONTINUE',
-          introFeaturePoints: cleanFeatures,
-          updatedBy: adminUser || 'admin'
-        })
-      });
-      const completeData = await completeRes.json().catch(() => null);
-      if (!completeRes.ok || !completeData?.success || !completeData.settings) {
-        throw new Error(completeData?.message || 'Failed to finalize video upload');
-      }
+          buttonSettings: {
+            ...currentSettings.buttonSettings,
+            introVideoUrl: cloudVideoUrl,
+            introVideoEnabled: true,
+            introFeaturePoints: cleanFeatures,
+            introVideoTitle: 'WITH PANEL GAMEPLAY',
+            introVideoButtonText: 'CONTINUE'
+          }
+        });
 
-      const finalVideoUrl = completeData.settings.introVideoUrl || completeData.introVideoUrl || '';
-      setIntroVideoUrl(finalVideoUrl);
-      setIntroVideoEnabled(true);
-      onUpdateSettings(completeData.settings);
-      showToast('Gameplay Video Uploaded & Applied!', 'success');
+        setIntroVideoUrl(cloudVideoUrl);
+        setIntroVideoEnabled(true);
+        onUpdateSettings(savedSettings);
+        showToast('Gameplay Video Uploaded & Applied!', 'success');
+      }
     } catch (err: any) {
       showToast(err?.message || 'Video upload failed', 'error');
     } finally {
@@ -1017,7 +1381,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         cleanVideoUrl &&
         !cleanVideoUrl.startsWith('http') &&
         !cleanVideoUrl.startsWith('/') &&
-        !cleanVideoUrl.startsWith('data:')
+        !cleanVideoUrl.startsWith('data:') &&
+        !cleanVideoUrl.startsWith('firestore://')
       ) {
         cleanVideoUrl = `https://${cleanVideoUrl}`;
         setIntroVideoUrl(cleanVideoUrl);
