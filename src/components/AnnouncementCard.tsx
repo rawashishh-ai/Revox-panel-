@@ -11,7 +11,8 @@ export const AnnouncementCard: React.FC<AnnouncementCardProps> = ({ settings, la
   const t = translations[lang];
 
   const handleWhatsAppClick = () => {
-    const prefillMessage = "Hello 👋 \nPlease send me the access key. 🔐";
+    const prefillMessage =
+      "👋 Hello REVOX PANEL!\n\n🔐 I want to buy an Access Key.\n💎 Please share the price and payment details.\n\n⚡ REVOX PANEL — POWER BEYOND LIMITS!";
     const encodedMsg = encodeURIComponent(prefillMessage);
 
     let raw = (settings.whatsappUrl || 'https://wa.me/919623508876').trim();
@@ -97,30 +98,35 @@ export const AnnouncementCard: React.FC<AnnouncementCardProps> = ({ settings, la
             );
           })()}
 
-          {/* Ultra-Premium Cyberpunk Gaming WhatsApp CTA Button (Glowing Neon Purple with Green WhatsApp Emblem) */}
-          <div className="relative group/btn mt-1 w-full">
-            {/* Rich Neon Purple Ambient Glow Behind Button */}
-            <div className="absolute -inset-[1.5px] bg-gradient-to-r from-[#9333ea]/50 via-[#c084fc]/60 to-[#a855f7]/50 rounded-[4px] blur-[8px] opacity-75 group-hover/btn:opacity-100 transition-opacity duration-200 pointer-events-none" />
+          {/* Ultra-Premium Cyberpunk Gaming WhatsApp CTA Button (Glowing White Finishing + Neon Purple Aura) */}
+          <div className="relative group/btn mt-1.5 w-full">
+            {/* Dual-Layer White + Neon Purple Ambient Halo Behind Button */}
+            <div className="absolute -inset-[2px] bg-gradient-to-r from-white/55 via-[#e9d5ff]/80 to-white/55 rounded-[5px] blur-[9px] opacity-85 group-hover/btn:opacity-100 transition-opacity duration-200 pointer-events-none" />
+            <div className="absolute -inset-[1px] bg-gradient-to-r from-[#a855f7]/60 via-white/90 to-[#a855f7]/60 rounded-[4px] blur-[3px] opacity-80 group-hover/btn:opacity-100 transition-opacity duration-200 pointer-events-none" />
 
-            {/* Glowing Neon Purple Border - Solid & Crisp (No vanishing/pulse) */}
-            <div className="relative p-[1.5px] bg-gradient-to-r from-[#9333ea] via-[#c084fc] to-[#7e22ce] clip-whatsapp-btn shadow-[0_0_20px_rgba(168,85,247,0.55),0_0_35px_rgba(147,51,234,0.35)] transition-transform duration-150 group-hover/btn:scale-[1.01] active:scale-[0.99]">
+            {/* Glowing White-Finished Border Rim */}
+            <div className="relative p-[1.5px] bg-gradient-to-r from-[#d8b4fe] via-white to-[#d8b4fe] clip-whatsapp-btn shadow-[0_0_16px_rgba(255,255,255,0.55),0_0_28px_rgba(192,132,252,0.65),0_0_42px_rgba(147,51,234,0.4)] transition-transform duration-150 group-hover/btn:scale-[1.01] active:scale-[0.99]">
               <button
                 onClick={handleWhatsAppClick}
                 type="button"
-                className="relative w-full bg-[#09090c] hover:bg-[#120e1c] active:bg-[#07050d] py-2 sm:py-2.5 px-3 sm:px-3.5 flex items-center justify-between gap-2.5 clip-whatsapp-btn cursor-pointer transition-colors duration-150"
+                className="relative w-full bg-[#09080f] hover:bg-[#130f20] active:bg-[#07050d] py-2 sm:py-2.5 px-3 sm:px-3.5 flex items-center justify-between gap-2.5 clip-whatsapp-btn cursor-pointer transition-colors duration-150 overflow-hidden shadow-[inset_0_0_18px_rgba(255,255,255,0.12)]"
               >
-                {/* Top subtle inner border highlight in light violet */}
-                <span className="absolute top-0 left-3 right-3 h-[1px] bg-gradient-to-r from-transparent via-[#c084fc]/60 to-transparent pointer-events-none" />
+                {/* Animated Luminous White Sheen Sweep */}
+                <div className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/25 to-transparent -skew-x-12 animate-sheen pointer-events-none" />
+
+                {/* Top & Bottom Crisp White Finishing Specular Highlights */}
+                <span className="absolute top-0 left-2 right-2 h-[1.5px] bg-gradient-to-r from-transparent via-white to-transparent opacity-95 shadow-[0_0_8px_#ffffff] pointer-events-none" />
+                <span className="absolute bottom-0 left-4 right-4 h-[1px] bg-gradient-to-r from-transparent via-white/75 to-transparent opacity-80 pointer-events-none" />
 
                 {/* LEFT SIDE: ONLY WhatsApp Icon is Green (+ Solid Glowing Green Indicator) */}
                 <div className="relative z-10 flex items-center gap-2 shrink-0">
-                  <div className="relative flex items-center justify-center w-6 h-6 sm:w-6.5 sm:h-6.5 rounded-[3px] bg-[#052e16] border border-[#10b981]/70 shadow-[0_0_10px_rgba(16,185,129,0.6)] group-hover/btn:scale-105 transition-transform">
+                  <div className="relative flex items-center justify-center w-6 h-6 sm:w-6.5 sm:h-6.5 rounded-[3px] bg-[#052e16] border border-[#10b981]/80 shadow-[0_0_10px_rgba(16,185,129,0.65),0_0_4px_rgba(255,255,255,0.35)] group-hover/btn:scale-105 transition-transform">
                     {/* Constant Glowing Green Online Indicator */}
                     <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-[#10b981] shadow-[0_0_6px_#10b981]" />
                     </span>
                     <svg 
-                      className="w-3.5 h-3.5 text-[#25D366] drop-shadow-[0_0_6px_rgba(37,211,102,0.9)]" 
+                      className="w-3.5 h-3.5 text-[#25D366] drop-shadow-[0_0_6px_rgba(37,211,102,0.95)]" 
                       viewBox="0 0 24 24" 
                       fill="currentColor"
                     >
@@ -129,18 +135,18 @@ export const AnnouncementCard: React.FC<AnnouncementCardProps> = ({ settings, la
                   </div>
                 </div>
 
-                {/* CENTER: Main text "GET KEY INSTANTLY" - High-contrast, Bold White Futuristic Font with Neon Purple Glow */}
+                {/* CENTER: Main text "GET KEY INSTANTLY" - High-contrast Bold White Futuristic Font with Glowing White + Violet Aura */}
                 <div className="relative z-10 flex-1 text-center">
-                  <span className="text-white text-[13px] sm:text-[14px] font-black tracking-[0.16em] uppercase font-tech drop-shadow-[0_0_12px_rgba(192,132,252,0.6)] select-none">
+                  <span className="text-white text-[13px] sm:text-[14px] font-black tracking-[0.16em] uppercase font-tech drop-shadow-[0_0_10px_rgba(255,255,255,0.9)] [text-shadow:0_0_16px_rgba(192,132,252,0.85)] select-none">
                     GET KEY INSTANTLY
                   </span>
                 </div>
 
-                {/* RIGHT SIDE: Small Premium Cyberpunk Purple Badge with Golden Key, 24/7, and Arrow */}
-                <div className="relative z-10 flex items-center gap-1.5 bg-[#3b1261]/60 border border-[#a855f7]/70 px-2 py-0.5 rounded-[3px] text-[#e9d5ff] text-[10px] sm:text-[10.5px] font-extrabold tracking-wider font-tech uppercase shadow-[0_0_10px_rgba(168,85,247,0.45)] group-hover/btn:border-[#c084fc] group-hover/btn:bg-[#4c167d]/80 transition-all shrink-0">
-                  <span className="text-[#fbbf24] drop-shadow-[0_0_4px_rgba(251,191,36,0.6)] text-[10px]">🔑</span>
-                  <span className="font-mono-code font-bold text-[10px] text-white">24/7</span>
-                  <span className="text-[#c084fc] transition-transform duration-150 group-hover/btn:translate-x-0.5 font-bold">→</span>
+                {/* RIGHT SIDE: Small Premium Cyberpunk Purple-White Badge with Golden Key, 24/7, and Arrow */}
+                <div className="relative z-10 flex items-center gap-1.5 bg-[#3b1261]/75 border border-white/60 px-2 py-0.5 rounded-[3px] text-white text-[10px] sm:text-[10.5px] font-extrabold tracking-wider font-tech uppercase shadow-[0_0_12px_rgba(255,255,255,0.35),0_0_10px_rgba(168,85,247,0.45)] group-hover/btn:border-white group-hover/btn:bg-[#4c167d]/90 transition-all shrink-0">
+                  <span className="text-[#fbbf24] drop-shadow-[0_0_4px_rgba(251,191,36,0.75)] text-[10px]">🔑</span>
+                  <span className="font-mono-code font-bold text-[10px] text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.8)]">24/7</span>
+                  <span className="text-white transition-transform duration-150 group-hover/btn:translate-x-0.5 font-bold drop-shadow-[0_0_6px_rgba(255,255,255,0.9)]">→</span>
                 </div>
               </button>
             </div>

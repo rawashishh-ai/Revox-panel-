@@ -603,32 +603,24 @@ export default function App() {
         {/* Left: Language Button (placed where Admin button used to be) */}
         <LanguageSelector currentLang={lang} onLanguageChange={setLang} />
 
-        {/* Right: Gameplay Button (placed where Language button used to be) */}
-        <button
-          type="button"
-          onClick={() => {
-            if (showIntroVideoGate) {
-              if (!unlockedKeyData) {
-                try {
-                  window.history.pushState({ rvxView: 'key-entry' }, '');
-                } catch {}
-              }
-              setHasPassedIntro(true);
-              setManualGameplayView(false);
-            } else {
+        {/* Right: Gameplay Button (shown ONLY on the Access Key login page) */}
+        {!showIntroVideoGate && !unlockedKeyData && (
+          <button
+            type="button"
+            onClick={() => {
               try {
                 window.history.pushState({ rvxView: 'gameplay' }, '');
               } catch {}
               setHasPassedIntro(false);
               setManualGameplayView(true);
-            }
-          }}
-          title="Watch Panel Gameplay Video"
-          className="bg-[#120d1d] hover:bg-[#1e1430] active:scale-95 border border-[#A020F0]/60 text-[#e9d5ff] hover:text-white text-xs font-bold tracking-wider px-3 py-1.5 rounded-[4px] flex items-center gap-1.5 cursor-pointer transition-all shadow-[0_0_12px_rgba(160,32,240,0.25)] font-tech uppercase"
-        >
-          <span>🎬</span>
-          <span>GAMEPLAY</span>
-        </button>
+            }}
+            title="Watch Panel Gameplay Video"
+            className="bg-[#120d1d] hover:bg-[#1e1430] active:scale-95 border border-[#A020F0]/60 text-[#e9d5ff] hover:text-white text-xs font-bold tracking-wider px-3 py-1.5 rounded-[4px] flex items-center gap-1.5 cursor-pointer transition-all shadow-[0_0_12px_rgba(160,32,240,0.25)] font-tech uppercase"
+          >
+            <span>🎬</span>
+            <span>GAMEPLAY</span>
+          </button>
+        )}
       </header>
 
       {/* Main Viewport Container */}

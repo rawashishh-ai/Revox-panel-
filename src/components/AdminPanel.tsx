@@ -199,6 +199,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         ]
   );
   const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [videoUploadProgress, setVideoUploadProgress] = useState<number | null>(null);
   const [savingAllSettings, setSavingAllSettings] = useState(false);
   const videoFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -292,7 +293,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       console.warn('API fetchKeys error, trying Firestore fallback:', err);
     }
 
-    // Always also fetch or merge with Firestore using the security-rule-compliant status filter
+    if (loadedFromApi) {
+      setKeys(apiKeys);
+      if (!silent) setLoadingKeys(false);
+      return;
+    }
+
+    // Fallback to Firestore if backend API is unreachable
     try {
       const q = query(
         collection(db, 'accessKeys'),
@@ -322,29 +329,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         }
       });
 
-      const mergedByKey = new Map<string, AccessKey>();
-      for (const ak of apiKeys) {
-        if (ak && ak.key) mergedByKey.set(ak.key.toUpperCase(), ak);
-      }
-      for (const fk of firestoreKeys) {
-        if (fk && fk.key) {
-          const kUpper = fk.key.toUpperCase();
-          const existing = mergedByKey.get(kUpper);
-          if (!existing || (fk.activatedAt && !existing.activatedAt)) {
-            mergedByKey.set(kUpper, fk);
-          }
-        }
-      }
-      const combined = Array.from(mergedByKey.values()).sort(
+      const combined = firestoreKeys.sort(
         (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
       );
       setKeys(combined);
     } catch (fsErr) {
-      if (loadedFromApi) {
-        setKeys(apiKeys);
-      } else {
-        console.error('Firestore fallback fetchKeys error:', fsErr);
-      }
+      console.warn('Firestore fallback fetchKeys warning:', fsErr);
     }
 
     if (!silent) setLoadingKeys(false);
@@ -489,16 +479,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
       if (res.ok && data?.success && Array.isArray(data.generated)) {
         const newlyCreated: AccessKey[] = data.generated;
-        // Also persist every newly generated key directly to Firestore under its uppercase key string for O(1) cross-device verification
-        for (const k of newlyCreated) {
-          const kUpper = k.key.toUpperCase();
-          try {
-            await setDoc(doc(db, 'accessKeys', kUpper), k);
-            if (k.id && k.id !== kUpper) {
-              await setDoc(doc(db, 'accessKeys', k.id), k);
-            }
-          } catch {}
-        }
         setGeneratedBatch(newlyCreated);
         if (Array.isArray(data.logs)) setLogs(data.logs);
         await fetchKeys(true);
@@ -593,12 +573,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       try { data = JSON.parse(text); } catch {}
       if (res.ok && data?.success && data.key) {
         setKeys(prev => prev.map(k => (k.id === keyItem.id ? data.key : k)));
-        try {
-          await setDoc(doc(db, 'accessKeys', kUpper), data.key, { merge: true });
-          if (keyItem.id !== kUpper) {
-            await setDoc(doc(db, 'accessKeys', keyItem.id), data.key, { merge: true });
-          }
-        } catch {}
         success = true;
       }
     } catch {}
@@ -638,12 +612,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       try { data = JSON.parse(text); } catch {}
       if (res.ok && data?.success && data.key) {
         setKeys(prev => prev.map(k => (k.id === keyItem.id ? data.key : k)));
-        try {
-          await setDoc(doc(db, 'accessKeys', kUpper), data.key, { merge: true });
-          if (keyItem.id !== kUpper) {
-            await setDoc(doc(db, 'accessKeys', keyItem.id), data.key, { merge: true });
-          }
-        } catch {}
         success = true;
       }
     } catch {}
@@ -694,12 +662,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       let data: any = null;
       try { data = JSON.parse(text); } catch {}
       if (res.ok && data?.success) {
-        try {
-          await deleteDoc(doc(db, 'accessKeys', kUpper));
-          if (deleteTargetKey.id !== kUpper) {
-            await deleteDoc(doc(db, 'accessKeys', deleteTargetKey.id));
-          }
-        } catch {}
         success = true;
       }
     } catch {}
@@ -860,11 +822,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
 
     const confirmedSettings: SiteSettings = data.settings;
-    try {
-      await setDoc(doc(db, 'websiteSettings', 'main'), confirmedSettings, { merge: true });
-      await setDoc(doc(db, 'settings', 'site'), confirmedSettings, { merge: true });
-    } catch {}
-
     onUpdateSettings(confirmedSettings);
     return confirmedSettings;
   };
@@ -941,22 +898,180 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
+  const uploadRawChunkWithProgress = (
+    videoId: string,
+    safeFileName: string,
+    chunkIndex: number,
+    byteOffset: number,
+    blob: Blob,
+    onProgress: (loadedBytes: number) => void
+  ): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const token = adminToken || sessionStorage.getItem('revox_admin_token') || '';
+      const params = new URLSearchParams({
+        videoId,
+        fileName: safeFileName,
+        chunkIndex: String(chunkIndex),
+        byteOffset: String(byteOffset)
+      });
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `/api/admin/upload-video-chunk?${params.toString()}`, true);
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+      if (token) {
+        xhr.setRequestHeader('x-admin-token', token);
+      }
+
+      xhr.upload.onprogress = evt => {
+        if (evt.lengthComputable) {
+          onProgress(evt.loaded);
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          onProgress(blob.size);
+          resolve();
+        } else {
+          let errMsg = `HTTP ${xhr.status}`;
+          try {
+            const parsed = JSON.parse(xhr.responseText);
+            if (parsed?.message) errMsg = parsed.message;
+          } catch {}
+          reject(new Error(errMsg));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('Network error during video chunk upload'));
+      xhr.onabort = () => reject(new Error('Video upload aborted'));
+      xhr.send(blob);
+    });
+  };
+
   const handleVideoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 45 * 1024 * 1024) {
-      showToast('Max video size is 45MB. Use a URL for larger videos.', 'error');
-      e.target.value = '';
-      return;
-    }
 
     const cleanFeatures = introFeaturePoints.map(p => p.trim()).filter(p => p.length > 0);
     setUploadingVideo(true);
+    setVideoUploadProgress(1);
+
+    // 4MB raw binary chunks with 4 parallel streams (0% Base64 overhead, full bandwidth speed, unlimited file size)
+    const CHUNK_BYTE_SIZE = 4 * 1024 * 1024;
+    const CONCURRENCY = 4;
+    const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_BYTE_SIZE));
+    const mimeType = file.type || 'video/mp4';
+
     try {
+      // 1. Primary Unlimited High-Speed Parallel Binary Upload
+      const initRes = await adminFetch('/api/admin/upload-video-init', {
+        method: 'POST',
+        body: JSON.stringify({
+          fileName: file.name,
+          mimeType
+        })
+      });
+
+      let initData: any = null;
+      try {
+        initData = await initRes.json();
+      } catch {}
+
+      if (initRes.ok && initData?.success && initData.videoId) {
+        const { videoId, fileName: safeFileName } = initData;
+        const loadedPerChunk = new Array<number>(totalChunks).fill(0);
+
+        const updateOverallProgress = () => {
+          if (file.size <= 0) {
+            setVideoUploadProgress(100);
+            return;
+          }
+          let totalLoaded = 0;
+          for (let i = 0; i < totalChunks; i++) {
+            totalLoaded += loadedPerChunk[i];
+          }
+          const pct = Math.min(99, Math.max(1, Math.round((totalLoaded / file.size) * 100)));
+          setVideoUploadProgress(pct);
+        };
+
+        let nextChunkToAssign = 0;
+        const uploadWorker = async () => {
+          while (true) {
+            const chunkIndex = nextChunkToAssign++;
+            if (chunkIndex >= totalChunks) break;
+
+            const start = chunkIndex * CHUNK_BYTE_SIZE;
+            const end = Math.min(file.size, start + CHUNK_BYTE_SIZE);
+            const sliceBlob = file.slice(start, end);
+
+            let chunkUploaded = false;
+            let lastChunkErr = '';
+            for (let attempt = 0; attempt < 3; attempt++) {
+              try {
+                loadedPerChunk[chunkIndex] = 0;
+                await uploadRawChunkWithProgress(
+                  videoId,
+                  safeFileName,
+                  chunkIndex,
+                  start,
+                  sliceBlob,
+                  loadedBytes => {
+                    loadedPerChunk[chunkIndex] = loadedBytes;
+                    updateOverallProgress();
+                  }
+                );
+                chunkUploaded = true;
+                break;
+              } catch (err: any) {
+                lastChunkErr = err?.message || 'Network error';
+              }
+            }
+
+            if (!chunkUploaded) {
+              throw new Error(lastChunkErr || `Failed on chunk ${chunkIndex + 1}/${totalChunks}`);
+            }
+          }
+        };
+
+        const workerCount = Math.min(CONCURRENCY, totalChunks);
+        const workers: Promise<void>[] = [];
+        for (let w = 0; w < workerCount; w++) {
+          workers.push(uploadWorker());
+        }
+        await Promise.all(workers);
+
+        setVideoUploadProgress(100);
+
+        const completeRes = await adminFetch('/api/admin/upload-video-complete', {
+          method: 'POST',
+          body: JSON.stringify({
+            videoId,
+            fileName: safeFileName,
+            mimeType,
+            totalChunks,
+            sizeBytes: file.size,
+            introVideoTitle: 'WITH PANEL GAMEPLAY',
+            introVideoButtonText: 'CONTINUE',
+            introFeaturePoints: cleanFeatures,
+            updatedBy: adminUser || 'admin'
+          })
+        });
+        const completeData = await completeRes.json().catch(() => null);
+        if (!completeRes.ok || !completeData?.success || !completeData.settings) {
+          throw new Error(completeData?.message || 'Failed to finalize video upload');
+        }
+
+        setIntroVideoUrl(completeData.settings.introVideoUrl || completeData.introVideoUrl || '');
+        setIntroVideoEnabled(true);
+        onUpdateSettings(completeData.settings);
+        showToast('Gameplay Video Uploaded!', 'success');
+        return;
+      }
+
+      // 2. Fallback: Firebase Storage direct upload (if available)
       const ext = file.name.split('.').pop()?.toLowerCase() || 'mp4';
       const cloudPath = `gameplayVideos/gameplay_${Date.now()}.${ext}`;
       const vRef = storageRef(storage, cloudPath);
-      await uploadBytes(vRef, file, { contentType: file.type || 'video/mp4' });
+      await uploadBytes(vRef, file, { contentType: mimeType });
       const cloudDownloadUrl = await getDownloadURL(vRef);
 
       if (cloudDownloadUrl && !cloudDownloadUrl.startsWith('blob:')) {
@@ -974,42 +1089,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         setIntroVideoUrl(cloudDownloadUrl);
         setIntroVideoEnabled(true);
         showToast('Gameplay Video Uploaded!', 'success');
-        setUploadingVideo(false);
-        if (videoFileInputRef.current) videoFileInputRef.current.value = '';
         return;
       }
-    } catch {}
-
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      try {
-        const dataUrl = reader.result as string;
-        const res = await adminFetch('/api/admin/upload-video', {
-          method: 'POST',
-          body: JSON.stringify({
-            dataUrl,
-            fileName: file.name,
-            introVideoTitle: 'WITH PANEL GAMEPLAY',
-            introVideoButtonText: 'CONTINUE',
-            updatedBy: adminUser || 'admin'
-          })
-        });
-        const data = await res.json();
-        if (!res.ok || !data.success || !data.settings) {
-          throw new Error(data.message || 'Failed to upload video');
-        }
-        setIntroVideoUrl(data.settings.introVideoUrl || data.introVideoUrl || '');
-        setIntroVideoEnabled(true);
-        onUpdateSettings(data.settings);
-        showToast('Gameplay Video Uploaded!', 'success');
-      } catch (err: any) {
-        showToast(err?.message || 'Video upload failed', 'error');
-      } finally {
-        setUploadingVideo(false);
-        if (videoFileInputRef.current) videoFileInputRef.current.value = '';
-      }
-    };
-    reader.readAsDataURL(file);
+    } catch (err: any) {
+      showToast(err?.message || 'Video upload failed', 'error');
+    } finally {
+      setUploadingVideo(false);
+      setVideoUploadProgress(null);
+      if (videoFileInputRef.current) videoFileInputRef.current.value = '';
+    }
   };
 
   const handleSaveAllWebsiteSettings = async (e?: React.FormEvent) => {
@@ -1810,30 +1898,43 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </label>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
-                  <input
-                    ref={videoFileInputRef}
-                    type="file"
-                    accept="video/mp4,video/webm,video/*"
-                    onChange={handleVideoFileChange}
-                    className="hidden"
-                  />
-                  <button
-                    type="button"
-                    disabled={uploadingVideo}
-                    onClick={() => videoFileInputRef.current?.click()}
-                    className="px-3.5 py-2 rounded-lg bg-[#8B5CF6] hover:bg-[#7C3AED] text-white font-tech font-bold text-xs uppercase cursor-pointer"
-                  >
-                    {uploadingVideo ? 'Uploading Video...' : '🎬 Upload MP4 Video'}
-                  </button>
-                  {introVideoUrl && (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      ref={videoFileInputRef}
+                      type="file"
+                      accept="video/mp4,video/webm,video/*"
+                      onChange={handleVideoFileChange}
+                      className="hidden"
+                    />
                     <button
                       type="button"
-                      onClick={() => setIntroVideoUrl('')}
-                      className="px-3 py-2 rounded-lg bg-red-500/15 border border-red-500/30 text-xs font-bold text-red-300 cursor-pointer"
+                      disabled={uploadingVideo}
+                      onClick={() => videoFileInputRef.current?.click()}
+                      className="px-3.5 py-2 rounded-lg bg-[#8B5CF6] hover:bg-[#7C3AED] text-white font-tech font-bold text-xs uppercase cursor-pointer disabled:opacity-70"
                     >
-                      Clear Video
+                      {uploadingVideo
+                        ? `Uploading Video${videoUploadProgress !== null ? ` (${videoUploadProgress}%)` : '...'}`
+                        : '🎬 Upload MP4 Video (No MB Limit)'}
                     </button>
+                    {introVideoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setIntroVideoUrl('')}
+                        className="px-3 py-2 rounded-lg bg-red-500/15 border border-red-500/30 text-xs font-bold text-red-300 cursor-pointer"
+                      >
+                        Clear Video
+                      </button>
+                    )}
+                  </div>
+
+                  {uploadingVideo && videoUploadProgress !== null && (
+                    <div className="w-full bg-[#09080E] border border-[#2E2646] rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] h-full transition-all duration-150"
+                        style={{ width: `${Math.max(4, videoUploadProgress)}%` }}
+                      />
+                    </div>
                   )}
                 </div>
 

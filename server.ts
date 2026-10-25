@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+import { execFile } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,8 +11,8 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
-app.use(express.json({ limit: '60mb' }));
-app.use(express.urlencoded({ extended: true, limit: '60mb' }));
+app.use(express.json({ limit: '2000mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2000mb' }));
 
 // Ensure local cache directories exist (used strictly as secondary cache; Firestore is authoritative)
 const dataDir = path.join(__dirname, 'data');
@@ -256,7 +257,10 @@ async function firestoreGetDoc(collectionName: string, docId: string): Promise<R
   }
 }
 
+let firestoreWritePausedUntil = 0;
+
 async function firestoreSetDoc(collectionName: string, docId: string, payload: Record<string, any>): Promise<boolean> {
+  if (Date.now() < firestoreWritePausedUntil) return false;
   const info = getFirestoreBaseUrl();
   if (!info) return false;
   try {
@@ -272,24 +276,36 @@ async function firestoreSetDoc(collectionName: string, docId: string, payload: R
       body: JSON.stringify({ fields })
     });
     if (!res.ok) {
+      if (res.status === 429) {
+        firestoreWritePausedUntil = Date.now() + 15 * 60 * 1000;
+        return false;
+      }
       const errTxt = await res.text().catch(() => '');
+      if (errTxt.includes('RESOURCE_EXHAUSTED') || errTxt.includes('Quota exceeded')) {
+        firestoreWritePausedUntil = Date.now() + 15 * 60 * 1000;
+        return false;
+      }
       console.warn(`Firestore SET ${collectionName}/${docId} HTTP ${res.status}:`, errTxt);
       return false;
     }
     return true;
-  } catch (err) {
-    console.warn(`Firestore SET ${collectionName}/${docId} error:`, err);
+  } catch {
     return false;
   }
 }
 
 async function firestoreDeleteDoc(collectionName: string, docId: string): Promise<boolean> {
+  if (Date.now() < firestoreWritePausedUntil) return false;
   const info = getFirestoreBaseUrl();
   if (!info) return false;
   try {
     const res = await fetch(`${info.baseUrl}/${collectionName}/${encodeURIComponent(docId)}?key=${info.apiKey}`, {
       method: 'DELETE'
     });
+    if (res.status === 429) {
+      firestoreWritePausedUntil = Date.now() + 15 * 60 * 1000;
+      return false;
+    }
     return res.ok;
   } catch {
     return false;
@@ -706,11 +722,14 @@ async function saveAndVerifySettings(
   partialUpdate: Partial<SiteSettings>,
   updatedBy = 'admin'
 ): Promise<{ verified: boolean; settings: SiteSettings }> {
-  // 1. Fetch latest authoritative document from Firestore first to prevent stale overwrites
-  const remoteLatest = await firestoreGetDoc('websiteSettings', 'main');
-  const currentBase = remoteLatest
-    ? normalizeSettings(remoteLatest as Partial<SiteSettings>)
-    : getSettings();
+  const localCurrent = getSettings();
+  const remoteLatest = Date.now() < firestoreWritePausedUntil ? null : await firestoreGetDoc('websiteSettings', 'main');
+  const remoteNormalized = remoteLatest ? normalizeSettings(remoteLatest as Partial<SiteSettings>) : null;
+
+  const currentBase =
+    remoteNormalized && (remoteNormalized.version || 0) > (localCurrent.version || 0)
+      ? remoteNormalized
+      : localCurrent;
 
   const currentVersion = Math.max(
     currentBase.version || 1,
@@ -727,9 +746,8 @@ async function saveAndVerifySettings(
     version: nextVersion
   });
 
-  // 2. Write to canonical websiteSettings/main and legacy settings/site in Firestore
+  // Write to canonical websiteSettings/main in Firestore when quota is available
   const savedMain = await firestoreSetDoc('websiteSettings', 'main', merged);
-  await firestoreSetDoc('settings', 'site', merged);
 
   // 3. Verify saved version on Firestore
   let verified = savedMain;
@@ -1460,66 +1478,87 @@ app.post('/api/admin/upload-logo', async (req: Request, res: Response) => {
   }
 });
 
-// Helper: Load or reconstruct persistent video asset from memory, disk, or Firestore chunks
-async function getOrHydrateVideoAsset(videoIdOrFile: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
+// Helper: Locate video file on local disk if already stored
+function findDiskVideoFile(videoIdOrFile: string): { filePath: string; mimeType: string } | null {
   const cleanId = videoIdOrFile.replace(/\.(mp4|webm|ogg|mov)$/i, '');
-
-  const cached = memoryVideoAssets.get(cleanId) || memoryVideoAssets.get(videoIdOrFile);
-  if (cached) {
-    return { buffer: cached.buffer, mimeType: cached.mimeType };
-  }
-
-  // Check local disk cache
   const possibleFiles = [
     path.join(uploadsDir, videoIdOrFile),
     path.join(uploadsDir, `${cleanId}.mp4`),
-    path.join(uploadsDir, `${cleanId}.webm`)
+    path.join(uploadsDir, `${cleanId}.webm`),
+    path.join(uploadsDir, `${cleanId}.ogg`)
   ];
   for (const fp of possibleFiles) {
     if (fs.existsSync(fp)) {
       try {
-        const buf = fs.readFileSync(fp);
-        const mimeType = fp.endsWith('.webm') ? 'video/webm' : 'video/mp4';
-        memoryVideoAssets.set(cleanId, { buffer: buf, mimeType, fileName: path.basename(fp) });
-        return { buffer: buf, mimeType };
+        const st = fs.statSync(fp);
+        if (st.size > 0) {
+          const mimeType = fp.endsWith('.webm')
+            ? 'video/webm'
+            : fp.endsWith('.ogg')
+            ? 'video/ogg'
+            : 'video/mp4';
+          return { filePath: fp, mimeType };
+        }
       } catch {}
     }
   }
-
-  // Reconstruct from Firestore videoAssets/{cleanId} + videoAssetChunks/{cleanId}_{i}
-  const metaDoc = await firestoreGetDoc('videoAssets', cleanId);
-  if (!metaDoc || typeof metaDoc.totalChunks !== 'number' || metaDoc.totalChunks <= 0) {
-    return null;
-  }
-
-  const totalChunks = Number(metaDoc.totalChunks);
-  const mimeType = typeof metaDoc.mimeType === 'string' ? metaDoc.mimeType : 'video/mp4';
-  const fileName = typeof metaDoc.fileName === 'string' ? metaDoc.fileName : `${cleanId}.mp4`;
-
-  const chunkPromises: Promise<Record<string, any> | null>[] = [];
-  for (let i = 0; i < totalChunks; i++) {
-    chunkPromises.push(firestoreGetDoc('videoAssetChunks', `${cleanId}_${i}`));
-  }
-  const chunkDocs = await Promise.all(chunkPromises);
-  const base64Parts: string[] = [];
-  for (let i = 0; i < totalChunks; i++) {
-    const cDoc = chunkDocs[i];
-    if (!cDoc || typeof cDoc.data !== 'string') {
-      return null;
-    }
-    base64Parts.push(cDoc.data);
-  }
-
-  const buffer = Buffer.from(base64Parts.join(''), 'base64');
-  memoryVideoAssets.set(cleanId, { buffer, mimeType, fileName });
-  try {
-    fs.writeFileSync(path.join(uploadsDir, fileName), buffer);
-  } catch {}
-
-  return { buffer, mimeType };
+  return null;
 }
 
-// Stream video buffer with HTTP 206 Range support for smooth mobile & desktop playback
+// Stream video directly from disk with HTTP 206 Range support (capped at 8MB chunks so Cloud Run's 32MB proxy limit is never exceeded)
+function streamVideoFromDisk(req: Request, res: Response, filePath: string, mimeType: string) {
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(filePath);
+  } catch {
+    return res.status(404).end();
+  }
+  const total = stat.size;
+  const range = req.headers.range;
+  const MAX_CHUNK_BYTES = 8 * 1024 * 1024; // 8MB max per HTTP response chunk (safe under Cloud Run 32MB limit)
+
+  res.setHeader('Accept-Ranges', 'bytes');
+  res.setHeader('Content-Type', mimeType);
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+
+  if (range) {
+    const parts = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(parts[0], 10);
+    const hasExplicitEnd = Boolean(parts[1] && parts[1].trim().length > 0);
+    const requestedEnd = hasExplicitEnd ? parseInt(parts[1], 10) : total - 1;
+    if (Number.isNaN(start) || start >= total || requestedEnd < start) {
+      res.status(416).setHeader('Content-Range', `bytes */${total}`).end();
+      return;
+    }
+    // Cap open-ended or huge ranges to 8MB per HTTP 206 chunk so Cloud Run proxy never truncates large videos
+    const end = Math.min(requestedEnd, start + MAX_CHUNK_BYTES - 1, total - 1);
+    const chunkSize = end - start + 1;
+    res.status(206);
+    res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+    res.setHeader('Content-Length', String(chunkSize));
+    const stream = fs.createReadStream(filePath, { start, end });
+    stream.on('error', () => res.end());
+    stream.pipe(res);
+  } else if (total > MAX_CHUNK_BYTES) {
+    const start = 0;
+    const end = Math.min(MAX_CHUNK_BYTES - 1, total - 1);
+    const chunkSize = end - start + 1;
+    res.status(206);
+    res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+    res.setHeader('Content-Length', String(chunkSize));
+    const stream = fs.createReadStream(filePath, { start, end });
+    stream.on('error', () => res.end());
+    stream.pipe(res);
+  } else {
+    res.status(200);
+    res.setHeader('Content-Length', String(total));
+    const stream = fs.createReadStream(filePath);
+    stream.on('error', () => res.end());
+    stream.pipe(res);
+  }
+}
+
+// Stream video buffer with HTTP 206 Range support for in-memory assets
 function streamVideoBuffer(req: Request, res: Response, buffer: Buffer, mimeType: string) {
   const total = buffer.length;
   const range = req.headers.range;
@@ -1548,31 +1587,395 @@ function streamVideoBuffer(req: Request, res: Response, buffer: Buffer, mimeType
   }
 }
 
-// Permanent Versioned Gameplay Video Delivery Endpoint (backed by Firestore videoAssets & chunks)
-app.get('/api/public/video/:videoId', async (req: Request, res: Response) => {
-  const { videoId } = req.params;
-  if (!videoId) return res.status(404).end();
+const hydratingVideos = new Map<string, Promise<string | null>>();
 
-  const videoAsset = await getOrHydrateVideoAsset(videoId);
-  if (!videoAsset) {
-    return res.status(404).json({ success: false, message: 'Video asset not found' });
+// Hydrate video from Firestore chunks to disk in streaming batches (supports unlimited chunks without OOM)
+async function hydrateVideoToDisk(videoIdOrFile: string): Promise<{ filePath: string; mimeType: string } | null> {
+  const cleanId = videoIdOrFile.replace(/\.(mp4|webm|ogg|mov)$/i, '');
+
+  const existingDisk = findDiskVideoFile(videoIdOrFile);
+  if (existingDisk) return existingDisk;
+
+  const metaDoc = await firestoreGetDoc('videoAssets', cleanId);
+  if (!metaDoc || typeof metaDoc.totalChunks !== 'number' || metaDoc.totalChunks <= 0) {
+    return null;
   }
-  return streamVideoBuffer(req, res, videoAsset.buffer, videoAsset.mimeType);
+
+  const totalChunks = Number(metaDoc.totalChunks);
+  const mimeType = typeof metaDoc.mimeType === 'string' ? metaDoc.mimeType : 'video/mp4';
+  const fileName = typeof metaDoc.fileName === 'string' ? metaDoc.fileName : `${cleanId}.mp4`;
+  const finalPath = path.join(uploadsDir, fileName);
+
+  let hydratePromise = hydratingVideos.get(cleanId);
+  if (!hydratePromise) {
+    hydratePromise = (async () => {
+      try {
+        const tmpPath = `${finalPath}.tmp_${Date.now()}`;
+        if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+
+        const batchSize = 10;
+        for (let i = 0; i < totalChunks; i += batchSize) {
+          const endIdx = Math.min(i + batchSize, totalChunks);
+          const promises: Promise<Record<string, any> | null>[] = [];
+          for (let j = i; j < endIdx; j++) {
+            promises.push(firestoreGetDoc('videoAssetChunks', `${cleanId}_${j}`));
+          }
+          const docs = await Promise.all(promises);
+          for (let k = 0; k < docs.length; k++) {
+            const cDoc = docs[k];
+            if (!cDoc || typeof cDoc.data !== 'string') {
+              if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+              return null;
+            }
+            const chunkBuf = Buffer.from(cDoc.data, 'base64');
+            fs.appendFileSync(tmpPath, chunkBuf);
+          }
+        }
+        fs.renameSync(tmpPath, finalPath);
+        return finalPath;
+      } catch (err) {
+        console.error('Error hydrating video to disk:', err);
+        return null;
+      } finally {
+        hydratingVideos.delete(cleanId);
+      }
+    })();
+    hydratingVideos.set(cleanId, hydratePromise);
+  }
+
+  const hydratedPath = await hydratePromise;
+  if (!hydratedPath || !fs.existsSync(hydratedPath)) return null;
+  return { filePath: hydratedPath, mimeType };
+}
+
+// Unified Gameplay Video Delivery Handler (supports unlimited video size via disk stream or Firestore chunks)
+async function handleServeGameplayVideo(req: Request, res: Response, videoIdOrFile: string) {
+  if (!videoIdOrFile) return res.status(404).end();
+  const cleanId = videoIdOrFile.replace(/\.(mp4|webm|ogg|mov)$/i, '');
+
+  // 1. If already on local disk, stream directly from disk (supports unlimited MB/GB with 0 RAM overhead)
+  const diskVideo = findDiskVideoFile(videoIdOrFile);
+  if (diskVideo) {
+    return streamVideoFromDisk(req, res, diskVideo.filePath, diskVideo.mimeType);
+  }
+
+  // 2. Check in-memory cache
+  const cached = memoryVideoAssets.get(cleanId) || memoryVideoAssets.get(videoIdOrFile);
+  if (cached) {
+    return streamVideoBuffer(req, res, cached.buffer, cached.mimeType);
+  }
+
+  // 3. Hydrate from Firestore chunks to disk & stream
+  const hydrated = await hydrateVideoToDisk(videoIdOrFile);
+  if (hydrated) {
+    return streamVideoFromDisk(req, res, hydrated.filePath, hydrated.mimeType);
+  }
+
+  return res.status(404).json({ success: false, message: 'Video asset not found' });
+}
+
+// Permanent Versioned Gameplay Video Delivery Endpoint
+app.get('/api/public/video/:videoId', async (req: Request, res: Response) => {
+  return handleServeGameplayVideo(req, res, req.params.videoId);
 });
 
 // Fallback handler for /uploads/:fileName so uploaded videos survive container restarts
 app.get('/uploads/:fileName', async (req: Request, res: Response) => {
-  const { fileName } = req.params;
-  if (!fileName) return res.status(404).end();
-
-  const videoAsset = await getOrHydrateVideoAsset(fileName);
-  if (!videoAsset) {
-    return res.status(404).end();
-  }
-  return streamVideoBuffer(req, res, videoAsset.buffer, videoAsset.mimeType);
+  return handleServeGameplayVideo(req, res, req.params.fileName);
 });
 
-// API: Admin upload gameplay video file directly from gallery (.mp4 / .webm / .mov)
+// API: Step 1 of Unlimited-Size Chunked Gameplay Video Upload (Initializes upload file & metadata)
+app.post('/api/admin/upload-video-init', async (req: Request, res: Response) => {
+  try {
+    const { fileName, mimeType: rawMime } = req.body || {};
+    const mimeType = typeof rawMime === 'string' && rawMime ? rawMime : 'video/mp4';
+
+    let ext = 'mp4';
+    if (mimeType.includes('webm') || (fileName && fileName.toLowerCase().endsWith('.webm'))) ext = 'webm';
+    else if (mimeType.includes('ogg') || (fileName && fileName.toLowerCase().endsWith('.ogg'))) ext = 'ogg';
+    else if (mimeType.includes('quicktime') || (fileName && fileName.toLowerCase().endsWith('.mov'))) ext = 'mp4';
+
+    const current = getSettings();
+    const nextVersion = (current.version || 1) + 1;
+    const videoId = `gameplay_v${nextVersion}_${Date.now()}`;
+    const safeFileName = `${videoId}.${ext}`;
+    const filePath = path.join(uploadsDir, safeFileName);
+
+    // Create empty file on disk ready for chunk appends
+    fs.writeFileSync(filePath, Buffer.alloc(0));
+
+    return res.json({
+      success: true,
+      videoId,
+      fileName: safeFileName,
+      mimeType,
+      version: nextVersion
+    });
+  } catch (err: any) {
+    console.error('Upload video init error:', err);
+    return res.status(500).json({ success: false, message: err?.message || 'Failed to init video upload' });
+  }
+});
+
+// API: Step 2 of Unlimited-Size Chunked Gameplay Video Upload (Supports fast parallel raw binary chunks & JSON fallback)
+app.post(
+  '/api/admin/upload-video-chunk',
+  express.raw({ type: 'application/octet-stream', limit: '50mb' }),
+  async (req: Request, res: Response) => {
+    try {
+      const isRawBuffer = Buffer.isBuffer(req.body);
+      const videoId = String(req.query.videoId || (!isRawBuffer && req.body?.videoId) || '').trim();
+      const rawFileName = String(req.query.fileName || (!isRawBuffer && req.body?.fileName) || '').trim();
+      const chunkIndex = Number(req.query.chunkIndex ?? (!isRawBuffer ? req.body?.chunkIndex : NaN));
+      const byteOffsetRaw = req.query.byteOffset ?? (!isRawBuffer ? req.body?.byteOffset : undefined);
+      const hasByteOffset = byteOffsetRaw !== undefined && byteOffsetRaw !== null && byteOffsetRaw !== '';
+      const byteOffset = hasByteOffset ? Number(byteOffsetRaw) : -1;
+
+      if (!videoId || Number.isNaN(chunkIndex) || chunkIndex < 0) {
+        return res.status(400).json({ success: false, message: 'Invalid chunk parameters' });
+      }
+
+      let chunkBuf: Buffer;
+      if (isRawBuffer) {
+        chunkBuf = req.body as Buffer;
+      } else if (typeof req.body?.data === 'string') {
+        chunkBuf = Buffer.from(req.body.data, 'base64');
+      } else {
+        return res.status(400).json({ success: false, message: 'Missing chunk binary payload' });
+      }
+
+      const safeFileName = rawFileName ? path.basename(rawFileName) : `${videoId}.mp4`;
+      const filePath = path.join(uploadsDir, safeFileName);
+
+      // Write directly at exact byteOffset when provided (enables parallel multi-connection uploads!)
+      if (byteOffset >= 0) {
+        const flags = fs.existsSync(filePath) ? 'r+' : 'w';
+        const fd = fs.openSync(filePath, flags);
+        try {
+          fs.writeSync(fd, chunkBuf, 0, chunkBuf.length, byteOffset);
+        } finally {
+          fs.closeSync(fd);
+        }
+      } else {
+        fs.appendFileSync(filePath, chunkBuf);
+      }
+
+      return res.json({
+        success: true,
+        chunkIndex,
+        bytesWritten: chunkBuf.length
+      });
+    } catch (err: any) {
+      console.error('Upload video chunk error:', err);
+      return res.status(500).json({ success: false, message: err?.message || 'Failed to upload video chunk' });
+    }
+  }
+);
+
+// Helper: Asynchronously back up completed disk video to Firestore chunks in background without blocking admin UI
+function backupDiskVideoToFirestoreAsync(
+  videoId: string,
+  safeFileName: string,
+  filePath: string,
+  mimeType: string,
+  version: number
+) {
+  setImmediate(async () => {
+    try {
+      if (Date.now() < firestoreWritePausedUntil) return;
+      if (!fs.existsSync(filePath)) return;
+      const stat = fs.statSync(filePath);
+      const totalBytes = stat.size;
+      // Only replicate small clips (<= 2.5MB) to Firestore chunks so large video uploads never exhaust daily Firestore write quota
+      if (totalBytes <= 0 || totalBytes > 2.5 * 1024 * 1024) return;
+
+      const FIRESTORE_CHUNK_BYTES = 512 * 1024; // 512KB binary (~683KB base64 per Firestore doc)
+      const totalFirestoreChunks = Math.ceil(totalBytes / FIRESTORE_CHUNK_BYTES);
+
+      const fd = fs.openSync(filePath, 'r');
+      try {
+        const BATCH_CONCURRENCY = 8;
+        for (let i = 0; i < totalFirestoreChunks; i += BATCH_CONCURRENCY) {
+          const batchPromises: Promise<boolean>[] = [];
+          const endIdx = Math.min(i + BATCH_CONCURRENCY, totalFirestoreChunks);
+          for (let cIdx = i; cIdx < endIdx; cIdx++) {
+            const offset = cIdx * FIRESTORE_CHUNK_BYTES;
+            const length = Math.min(FIRESTORE_CHUNK_BYTES, totalBytes - offset);
+            const buf = Buffer.allocUnsafe(length);
+            const bytesRead = fs.readSync(fd, buf, 0, length, offset);
+            const base64Slice = buf.subarray(0, bytesRead).toString('base64');
+            batchPromises.push(
+              firestoreSetDoc('videoAssetChunks', `${videoId}_${cIdx}`, {
+                videoId,
+                chunkIndex: cIdx,
+                data: base64Slice
+              })
+            );
+          }
+          await Promise.all(batchPromises);
+        }
+      } finally {
+        fs.closeSync(fd);
+      }
+
+      await firestoreSetDoc('videoAssets', videoId, {
+        videoId,
+        fileName: safeFileName,
+        mimeType,
+        totalChunks: totalFirestoreChunks,
+        sizeBytes: totalBytes,
+        version,
+        createdAt: new Date().toISOString()
+      });
+    } catch (err) {
+      console.error('Background Firestore video backup error:', err);
+    }
+  });
+}
+
+// Fast 0.2s stream-copy remux to move MP4 moov atom to byte 0 (+faststart) for instant mobile playback
+function remuxMp4FaststartQuick(filePath: string): Promise<void> {
+  return new Promise(resolve => {
+    if (!filePath.endsWith('.mp4') || !fs.existsSync(filePath)) return resolve();
+    const tmpFast = `${filePath}.fast_${Date.now()}.mp4`;
+    execFile(
+      'ffmpeg',
+      ['-y', '-i', filePath, '-c', 'copy', '-movflags', '+faststart', tmpFast],
+      { timeout: 4500 },
+      err => {
+        try {
+          if (!err && fs.existsSync(tmpFast) && fs.statSync(tmpFast).size > 0) {
+            fs.renameSync(tmpFast, filePath);
+          } else if (fs.existsSync(tmpFast)) {
+            fs.unlinkSync(tmpFast);
+          }
+        } catch {}
+        resolve();
+      }
+    );
+  });
+}
+
+// Background universal 1080p H.264 +faststart optimizer for 4K / high-bitrate videos so mobile decoders never fail
+function optimizeHighBitrateVideoInBackground(filePath: string) {
+  setImmediate(() => {
+    try {
+      if (!fs.existsSync(filePath)) return;
+      const st = fs.statSync(filePath);
+      // Only re-encode if file is larger than 20MB (e.g., 4K 100Mbps raw recording)
+      if (st.size <= 20 * 1024 * 1024) return;
+      const tmpOpt = `${filePath}.opt_${Date.now()}.mp4`;
+      execFile(
+        'ffmpeg',
+        [
+          '-y',
+          '-i',
+          filePath,
+          '-vf',
+          "scale='min(1920,iw)':-2",
+          '-c:v',
+          'libx264',
+          '-preset',
+          'ultrafast',
+          '-crf',
+          '24',
+          '-maxrate',
+          '6M',
+          '-bufsize',
+          '12M',
+          '-pix_fmt',
+          'yuv420p',
+          '-c:a',
+          'aac',
+          '-b:a',
+          '128k',
+          '-movflags',
+          '+faststart',
+          tmpOpt
+        ],
+        { timeout: 120000 },
+        err => {
+          try {
+            if (!err && fs.existsSync(tmpOpt) && fs.statSync(tmpOpt).size > 0) {
+              fs.renameSync(tmpOpt, filePath);
+            } else if (fs.existsSync(tmpOpt)) {
+              fs.unlinkSync(tmpOpt);
+            }
+          } catch {}
+        }
+      );
+    } catch {}
+  });
+}
+
+// API: Step 3 of Unlimited-Size Chunked Gameplay Video Upload (Finalizes metadata immediately & backs up in background)
+app.post('/api/admin/upload-video-complete', async (req: Request, res: Response) => {
+  try {
+    const {
+      videoId,
+      fileName,
+      mimeType: rawMime,
+      introVideoTitle,
+      introVideoButtonText,
+      introFeaturePoints,
+      updatedBy
+    } = req.body || {};
+
+    if (!videoId) {
+      return res.status(400).json({ success: false, message: 'Missing videoId' });
+    }
+
+    const current = getSettings();
+    const nextVersion = (current.version || 1) + 1;
+    const safeFileName = typeof fileName === 'string' && fileName ? path.basename(fileName) : `${videoId}.mp4`;
+    const mimeType = typeof rawMime === 'string' && rawMime ? rawMime : 'video/mp4';
+    const filePath = path.join(uploadsDir, safeFileName);
+
+    // Move MP4 moov atom to byte 0 (+faststart) in ~0.2s so playback starts immediately
+    await remuxMp4FaststartQuick(filePath);
+
+    const videoPublicUrl = `/api/public/video/${videoId}`;
+    const cleanFeatures = Array.isArray(introFeaturePoints)
+      ? introFeaturePoints
+      : current.introFeaturePoints || DEFAULT_INTRO_FEATURE_POINTS;
+
+    const { verified, settings } = await saveAndVerifySettings(
+      {
+        introVideoUrl: videoPublicUrl,
+        introVideoEnabled: true,
+        introFeaturePoints: cleanFeatures,
+        introVideoTitle: introVideoTitle || current.introVideoTitle || 'WITH PANEL GAMEPLAY',
+        introVideoButtonText: introVideoButtonText || current.introVideoButtonText || 'CONTINUE',
+        buttonSettings: {
+          ...current.buttonSettings,
+          introVideoUrl: videoPublicUrl,
+          introVideoEnabled: true,
+          introFeaturePoints: cleanFeatures,
+          introVideoTitle: introVideoTitle || current.introVideoTitle || 'WITH PANEL GAMEPLAY',
+          introVideoButtonText: introVideoButtonText || current.introVideoButtonText || 'CONTINUE'
+        }
+      },
+      updatedBy || 'admin'
+    );
+
+    // Trigger non-blocking background optimization & Firestore backup
+    optimizeHighBitrateVideoInBackground(filePath);
+    backupDiskVideoToFirestoreAsync(videoId, safeFileName, filePath, mimeType, nextVersion);
+
+    return res.json({
+      success: true,
+      verified,
+      version: settings.version,
+      introVideoUrl: videoPublicUrl,
+      settings
+    });
+  } catch (err: any) {
+    console.error('Upload video complete error:', err);
+    return res.status(500).json({ success: false, message: err?.message || 'Failed to finalize video upload' });
+  }
+});
+
+// API: Admin upload gameplay video file directly (single-payload fallback, no chunk cap)
 app.post('/api/admin/upload-video', async (req: Request, res: Response) => {
   const { dataUrl, fileName, introVideoTitle, introVideoButtonText, updatedBy } = req.body || {};
   if (!dataUrl || typeof dataUrl !== 'string') {
@@ -1600,42 +2003,34 @@ app.post('/api/admin/upload-video', async (req: Request, res: Response) => {
     const filePath = path.join(uploadsDir, safeFileName);
     fs.writeFileSync(filePath, buffer);
 
-    memoryVideoAssets.set(videoId, {
-      buffer,
-      mimeType,
-      fileName: safeFileName
-    });
-
-    // Store video chunks persistently in Firestore (each chunk <= 700KB base64) so it survives Cloud Run restarts
+    // Store video chunks persistently in Firestore (each chunk <= 700KB base64) with no artificial chunk limit
     const CHUNK_SIZE = 700000;
     const totalChunks = Math.ceil(base64Data.length / CHUNK_SIZE);
-    if (totalChunks <= 65) {
-      const batchSize = 6;
-      for (let i = 0; i < totalChunks; i += batchSize) {
-        const batchPromises: Promise<boolean>[] = [];
-        for (let j = i; j < Math.min(i + batchSize, totalChunks); j++) {
-          const slice = base64Data.slice(j * CHUNK_SIZE, (j + 1) * CHUNK_SIZE);
-          batchPromises.push(
-            firestoreSetDoc('videoAssetChunks', `${videoId}_${j}`, {
-              videoId,
-              chunkIndex: j,
-              data: slice
-            })
-          );
-        }
-        await Promise.all(batchPromises);
+    const batchSize = 6;
+    for (let i = 0; i < totalChunks; i += batchSize) {
+      const batchPromises: Promise<boolean>[] = [];
+      for (let j = i; j < Math.min(i + batchSize, totalChunks); j++) {
+        const slice = base64Data.slice(j * CHUNK_SIZE, (j + 1) * CHUNK_SIZE);
+        batchPromises.push(
+          firestoreSetDoc('videoAssetChunks', `${videoId}_${j}`, {
+            videoId,
+            chunkIndex: j,
+            data: slice
+          })
+        );
       }
-
-      await firestoreSetDoc('videoAssets', videoId, {
-        videoId,
-        fileName: safeFileName,
-        mimeType,
-        totalChunks,
-        sizeBytes: buffer.length,
-        version: nextVersion,
-        createdAt: new Date().toISOString()
-      });
+      await Promise.all(batchPromises);
     }
+
+    await firestoreSetDoc('videoAssets', videoId, {
+      videoId,
+      fileName: safeFileName,
+      mimeType,
+      totalChunks,
+      sizeBytes: buffer.length,
+      version: nextVersion,
+      createdAt: new Date().toISOString()
+    });
 
     const videoPublicUrl = `/api/public/video/${videoId}`;
 

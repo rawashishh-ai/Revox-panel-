@@ -92,12 +92,21 @@ export const Direct16x9VideoPlayer: React.FC<Direct16x9VideoPlayerProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [videoError, setVideoError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const [naturalAspect, setNaturalAspect] = useState<number | null>(null);
 
   useEffect(() => {
     setVideoError(false);
+    setRetryCount(0);
     setNaturalAspect(null);
   }, [videoUrl]);
+
+  const effectiveVideoSrc =
+    parsed.type === 'html5' && parsed.videoUrl
+      ? retryCount > 0
+        ? `${parsed.videoUrl}${parsed.videoUrl.includes('?') ? '&' : '?'}r=${retryCount}`
+        : parsed.videoUrl
+      : undefined;
 
   // Attempt unmuted autoplay first; if browser blocks unmuted autoplay, fallback to muted autoplay
   useEffect(() => {
@@ -117,7 +126,7 @@ export const Direct16x9VideoPlayer: React.FC<Direct16x9VideoPlayerProps> = ({
           });
       }
     }
-  }, [parsed.type, parsed.videoUrl, autoPlay]);
+  }, [parsed.type, effectiveVideoSrc, autoPlay]);
 
   const handleLoadedMetadata = () => {
     if (!videoRef.current) return;
@@ -155,19 +164,25 @@ export const Direct16x9VideoPlayer: React.FC<Direct16x9VideoPlayerProps> = ({
         }
       >
         {/* Render HTML5 Video for uploaded MP4 / WebM files */}
-        {parsed.type === 'html5' && !videoError && parsed.videoUrl && (
+        {parsed.type === 'html5' && !videoError && effectiveVideoSrc && (
           <div className="relative w-full h-full bg-[#050308] flex items-center justify-center">
             <video
               ref={videoRef}
-              src={parsed.videoUrl}
+              src={effectiveVideoSrc}
               onLoadedMetadata={handleLoadedMetadata}
               className="w-full h-full object-contain bg-[#050308]"
               controls
               playsInline
               loop
-              preload="metadata"
+              preload="auto"
               autoPlay={autoPlay}
-              onError={() => setVideoError(true)}
+              onError={() => {
+                if (retryCount < 2) {
+                  setTimeout(() => setRetryCount(c => c + 1), 600);
+                } else {
+                  setVideoError(true);
+                }
+              }}
             />
             {isMuted && (
               <button

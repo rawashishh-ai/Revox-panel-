@@ -61,14 +61,14 @@ service cloud.firestore {
 
     function isValidVideoAsset(data) {
       return data.videoId is string && data.videoId.size() <= 128 &&
-             data.totalChunks is number && data.totalChunks >= 1 && data.totalChunks <= 70 &&
+             data.totalChunks is number && data.totalChunks >= 1 && data.totalChunks <= 10000000 &&
              data.version is number &&
              data.createdAt is string && data.createdAt.size() <= 64;
     }
 
     function isValidVideoAssetChunk(data) {
       return data.videoId is string && data.videoId.size() <= 128 &&
-             data.chunkIndex is number && data.chunkIndex >= 0 && data.chunkIndex <= 70 &&
+             data.chunkIndex is number && data.chunkIndex >= 0 && data.chunkIndex <= 10000000 &&
              data.data is string && data.data.size() <= 950000;
     }
 

@@ -9,8 +9,8 @@ export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const storage = getStorage(app);
 
-// Keep Firestore logs clean and suppress noisy reconnect warnings
-setLogLevel('error');
+// Keep Firestore logs clean and suppress internal SDK quota/backoff console errors
+setLogLevel('silent');
 
 export const googleProvider = new GoogleAuthProvider();
 
