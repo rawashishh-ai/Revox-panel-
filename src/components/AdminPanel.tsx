@@ -1444,24 +1444,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // ============================================================================
   if (!authorized) {
     return (
-      <div className="fixed inset-0 z-50 bg-[#07060B]/95 backdrop-blur-xl flex items-center justify-center p-4 select-none">
-        <div className="w-full max-w-[380px] bg-[#110E1C] border border-[#8B5CF6]/40 rounded-2xl p-6 shadow-[0_0_40px_rgba(139,92,246,0.2)] text-white relative animate-fade-in">
+      <div className="fixed inset-0 z-50 bg-[#05070B]/95 backdrop-blur-xl flex items-center justify-center p-4 select-none">
+        <div className="w-full max-w-[380px] bg-[#0D1520] border border-[#00E5FF]/35 rounded-2xl p-6 shadow-[0_0_40px_rgba(0,229,255,0.18)] text-[#F4F9FF] relative animate-fade-in">
           <button
             type="button"
             onClick={onClose}
-            className="absolute top-4 right-4 w-8 h-8 rounded-lg bg-[#1B162B] hover:bg-[#261F3D] text-[#A1A1AA] hover:text-white flex items-center justify-center cursor-pointer"
+            className="absolute top-4 right-4 w-8 h-8 rounded-lg bg-[#0A1018] hover:bg-[#111C2A] border border-[#00E5FF]/25 text-[#A5B4C7] hover:text-[#F4F9FF] flex items-center justify-center cursor-pointer"
           >
             ✕
           </button>
 
           <div className="flex flex-col items-center text-center mb-5">
-            <div className="w-12 h-12 rounded-xl bg-[#8B5CF6]/20 border border-[#8B5CF6]/50 flex items-center justify-center text-[#C4B5FD] text-xl font-bold mb-3">
+            <div className="w-12 h-12 rounded-xl bg-[#00E5FF]/15 border border-[#00E5FF]/45 flex items-center justify-center text-[#00E5FF] text-xl font-bold mb-3">
               🔒
             </div>
-            <h2 className="text-xl font-black font-tech tracking-wider uppercase text-white">
+            <h2 className="text-xl font-black font-tech tracking-wider uppercase text-[#F4F9FF]">
               ADMIN LOGIN
             </h2>
-            <p className="text-xs text-[#9CA3AF] mt-1">
+            <p className="text-xs text-[#A5B4C7] mt-1">
               Enter admin password to manage keys & website
             </p>
           </div>
@@ -1476,7 +1476,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               }}
               placeholder="Enter Admin Password"
               autoFocus
-              className="w-full bg-[#09080F] border border-[#2E2646] focus:border-[#8B5CF6] rounded-xl px-4 py-3 text-sm text-white outline-none font-mono-code text-center tracking-wider"
+              className="w-full bg-[#080D14] border border-[#00E5FF]/30 focus:border-[#00E5FF] rounded-xl px-4 py-3 text-sm text-[#F4F9FF] outline-none font-mono-code text-center tracking-wider"
             />
 
             {loginError && (
@@ -1488,21 +1488,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <button
               type="submit"
               disabled={verifyingAuth}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-[#7C3AED] to-[#8B5CF6] hover:brightness-110 text-white font-tech font-bold tracking-wider uppercase text-sm cursor-pointer shadow-[0_4px_20px_rgba(139,92,246,0.35)] disabled:opacity-50"
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-[#00E5FF] via-[#42BFFF] to-[#167DFF] hover:brightness-110 text-[#05070B] font-tech font-bold tracking-wider uppercase text-sm cursor-pointer shadow-[0_4px_20px_rgba(0,229,255,0.32)] disabled:opacity-50"
             >
               {verifyingAuth ? 'OPENING...' : 'LOGIN TO ADMIN'}
             </button>
           </form>
 
-          <div className="my-4 border-t border-[#221C35]" />
+          <div className="my-4 border-t border-[#00E5FF]/20" />
 
           <button
             type="button"
             onClick={handleGoogleLogin}
             disabled={verifyingAuth}
-            className="w-full bg-[#171326] hover:bg-[#211B36] border border-[#2E2646] text-[#E5E7EB] py-2.5 px-4 rounded-xl text-xs font-medium flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full bg-[#0A1018] hover:bg-[#101A26] border border-[#00E5FF]/30 text-[#F4F9FF] py-2.5 px-4 rounded-xl text-xs font-medium flex items-center justify-center gap-2 cursor-pointer"
           >
-            <span className="font-bold text-[#A78BFA]">G</span>
+            <span className="font-bold text-[#00E5FF]">G</span>
             <span>Sign in with Google Admin</span>
           </button>
         </div>
@@ -1514,7 +1514,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // CLEAN, SIMPLE & PROFESSIONAL ADMIN DASHBOARD
   // ============================================================================
   return (
-    <div className="fixed inset-0 z-50 bg-[#08070C] text-white flex flex-col overflow-hidden select-none animate-fade-in">
+    <div className="fixed inset-0 z-50 bg-[#05070B] text-[#F4F9FF] flex flex-col overflow-hidden select-none animate-fade-in">
       {/* Toast Notification */}
       {toast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[90] w-[90%] max-w-xs pointer-events-none animate-fade-in">
@@ -1522,7 +1522,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             className={`px-4 py-2.5 rounded-xl border shadow-xl flex items-center justify-center gap-2 text-xs font-semibold ${
               toast.type === 'error'
                 ? 'bg-[#220C14] border-red-500/60 text-red-200'
-                : 'bg-[#17112A] border-[#8B5CF6] text-white'
+                : 'bg-[#0D1520] border-[#00E5FF] text-[#F4F9FF]'
             }`}
           >
             <span>{toast.type === 'error' ? '⚠️' : '✓'}</span>
@@ -1532,17 +1532,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       )}
 
       {/* Top Simple Header Bar */}
-      <header className="bg-[#0E0C16] border-b border-[#221C34] px-4 py-3 shrink-0">
+      <header className="bg-[#0A1018] border-b border-[#00E5FF]/25 px-4 py-3 shrink-0">
         <div className="max-w-2xl mx-auto flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-[#8B5CF6] flex items-center justify-center font-tech font-black text-sm text-white shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#00E5FF] to-[#167DFF] flex items-center justify-center font-tech font-black text-sm text-[#05070B] shrink-0">
               RX
             </div>
             <div className="truncate">
-              <div className="text-sm font-black font-tech tracking-wider text-white uppercase truncate">
+              <div className="text-sm font-black font-tech tracking-wider text-[#F4F9FF] uppercase truncate">
                 {currentSettings.panelName || 'REVOX PANEL'} — ADMIN
               </div>
-              <div className="text-[11px] text-[#9CA3AF]">
+              <div className="text-[11px] text-[#A5B4C7]">
                 Simple Key & Website Manager
               </div>
             </div>
@@ -1553,14 +1553,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               role="button"
               tabIndex={0}
               onClick={handleAdminLogout}
-              className="text-xs font-mono-code font-bold text-[#9CA3AF] hover:text-red-400 cursor-pointer"
+              className="text-xs font-mono-code font-bold text-[#A5B4C7] hover:text-red-400 cursor-pointer"
             >
               LOGOUT
             </span>
             <button
               type="button"
               onClick={onClose}
-              className="px-3 py-1.5 rounded-lg bg-[#1B162A] hover:bg-[#26203B] border border-[#342B4F] text-xs font-bold text-white cursor-pointer"
+              className="px-3 py-1.5 rounded-lg bg-[#0D1520] hover:bg-[#131F2E] border border-[#00E5FF]/35 text-xs font-bold text-[#F4F9FF] cursor-pointer"
             >
               ✕ Exit
             </button>
@@ -1568,14 +1568,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
 
         {/* Simple 3-Tab Switcher right inside the header */}
-        <div className="max-w-2xl mx-auto mt-3 grid grid-cols-3 gap-1.5 bg-[#09080E] p-1 rounded-xl border border-[#221C34]">
+        <div className="max-w-2xl mx-auto mt-3 grid grid-cols-3 gap-1.5 bg-[#080D14] p-1 rounded-xl border border-[#00E5FF]/25">
           <button
             type="button"
             onClick={() => setActiveTab('create')}
             className={`py-2 px-2 rounded-lg font-tech font-bold text-xs sm:text-sm tracking-wider uppercase cursor-pointer transition-all ${
               activeTab === 'create'
-                ? 'bg-[#8B5CF6] text-white shadow-[0_2px_12px_rgba(139,92,246,0.4)]'
-                : 'text-[#9CA3AF] hover:text-white'
+                ? 'bg-gradient-to-r from-[#00E5FF] to-[#42BFFF] text-[#05070B] shadow-[0_2px_12px_rgba(0,229,255,0.35)]'
+                : 'text-[#A5B4C7] hover:text-[#F4F9FF]'
             }`}
           >
             ⚡ CREATE KEY
@@ -1586,8 +1586,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             onClick={() => setActiveTab('keys')}
             className={`py-2 px-2 rounded-lg font-tech font-bold text-xs sm:text-sm tracking-wider uppercase cursor-pointer transition-all ${
               activeTab === 'keys'
-                ? 'bg-[#8B5CF6] text-white shadow-[0_2px_12px_rgba(139,92,246,0.4)]'
-                : 'text-[#9CA3AF] hover:text-white'
+                ? 'bg-gradient-to-r from-[#00E5FF] to-[#42BFFF] text-[#05070B] shadow-[0_2px_12px_rgba(0,229,255,0.35)]'
+                : 'text-[#A5B4C7] hover:text-[#F4F9FF]'
             }`}
           >
             🔑 KEYS ({liveMetrics.total})
@@ -1598,8 +1598,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             onClick={() => setActiveTab('settings')}
             className={`py-2 px-2 rounded-lg font-tech font-bold text-xs sm:text-sm tracking-wider uppercase cursor-pointer transition-all ${
               activeTab === 'settings'
-                ? 'bg-[#8B5CF6] text-white shadow-[0_2px_12px_rgba(139,92,246,0.4)]'
-                : 'text-[#9CA3AF] hover:text-white'
+                ? 'bg-gradient-to-r from-[#00E5FF] to-[#42BFFF] text-[#05070B] shadow-[0_2px_12px_rgba(0,229,255,0.35)]'
+                : 'text-[#A5B4C7] hover:text-[#F4F9FF]'
             }`}
           >
             ⚙️ SETTINGS
@@ -1619,12 +1619,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   setKeyFilter('all');
                   setActiveTab('keys');
                 }}
-                className="bg-[#120F1D] hover:bg-[#191528] border border-[#26203B] rounded-xl p-2.5 text-center cursor-pointer"
+                className="bg-[#0D1520] hover:bg-[#121D2B] border border-[#00E5FF]/25 rounded-xl p-2.5 text-center cursor-pointer"
               >
-                <div className="text-lg sm:text-xl font-black font-mono-code text-white">
+                <div className="text-lg sm:text-xl font-black font-mono-code text-[#F4F9FF]">
                   {liveMetrics.total}
                 </div>
-                <div className="text-[10px] font-bold text-[#A1A1AA] uppercase">Total</div>
+                <div className="text-[10px] font-bold text-[#A5B4C7] uppercase">Total</div>
               </button>
 
               <button
@@ -1633,12 +1633,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   setKeyFilter('unused');
                   setActiveTab('keys');
                 }}
-                className="bg-[#120F1D] hover:bg-[#191528] border border-[#8B5CF6]/30 rounded-xl p-2.5 text-center cursor-pointer"
+                className="bg-[#0D1520] hover:bg-[#121D2B] border border-[#00E5FF]/35 rounded-xl p-2.5 text-center cursor-pointer"
               >
-                <div className="text-lg sm:text-xl font-black font-mono-code text-[#C4B5FD]">
+                <div className="text-lg sm:text-xl font-black font-mono-code text-[#42BFFF]">
                   {liveMetrics.unused}
                 </div>
-                <div className="text-[10px] font-bold text-[#C4B5FD] uppercase">Unused</div>
+                <div className="text-[10px] font-bold text-[#42BFFF] uppercase">Unused</div>
               </button>
 
               <button
@@ -1647,7 +1647,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   setKeyFilter('active');
                   setActiveTab('keys');
                 }}
-                className="bg-[#120F1D] hover:bg-[#191528] border border-emerald-500/30 rounded-xl p-2.5 text-center cursor-pointer"
+                className="bg-[#0D1520] hover:bg-[#121D2B] border border-emerald-500/30 rounded-xl p-2.5 text-center cursor-pointer"
               >
                 <div className="text-lg sm:text-xl font-black font-mono-code text-emerald-400">
                   {liveMetrics.inUse}
@@ -1661,7 +1661,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   setKeyFilter('expired');
                   setActiveTab('keys');
                 }}
-                className="bg-[#120F1D] hover:bg-[#191528] border border-amber-500/30 rounded-xl p-2.5 text-center cursor-pointer"
+                className="bg-[#0D1520] hover:bg-[#121D2B] border border-amber-500/30 rounded-xl p-2.5 text-center cursor-pointer"
               >
                 <div className="text-lg sm:text-xl font-black font-mono-code text-amber-400">
                   {liveMetrics.expired}
@@ -1676,12 +1676,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               ==================================================================== */}
           {activeTab === 'create' && (
             <div className="space-y-4 animate-fade-in">
-              <div className="bg-[#120F1D] border border-[#28213E] rounded-2xl p-4 sm:p-5 space-y-4">
+              <div className="bg-[#0D1520] border border-[#00E5FF]/25 rounded-2xl p-4 sm:p-5 space-y-4">
                 <div>
-                  <h2 className="text-base sm:text-lg font-black font-tech uppercase tracking-wider text-white">
+                  <h2 className="text-base sm:text-lg font-black font-tech uppercase tracking-wider text-[#F4F9FF]">
                     CREATE NEW ACCESS KEY
                   </h2>
-                  <p className="text-xs text-[#9CA3AF]">
+                  <p className="text-xs text-[#A5B4C7]">
                     1 Key works on 1 Device only. Timer starts when the user unlocks it.
                   </p>
                 </div>
@@ -1689,7 +1689,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <form onSubmit={handleGenerateKeys} className="space-y-4">
                   {/* 1. Customer Name */}
                   <div>
-                    <label className="block text-xs font-bold text-[#D1D5DB] mb-1.5">
+                    <label className="block text-xs font-bold text-[#F4F9FF] mb-1.5">
                       1. Customer Name
                     </label>
                     <input
@@ -1700,13 +1700,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         if (genError) setGenError(null);
                       }}
                       placeholder="Enter name (e.g. Rahul)"
-                      className="w-full bg-[#09080E] border border-[#2E2646] focus:border-[#8B5CF6] rounded-xl px-3.5 py-2.5 text-sm text-white outline-none"
+                      className="w-full bg-[#080D14] border border-[#00E5FF]/30 focus:border-[#00E5FF] rounded-xl px-3.5 py-2.5 text-sm text-[#F4F9FF] outline-none"
                     />
                   </div>
 
                   {/* 2. Quick Duration Buttons */}
                   <div>
-                    <label className="block text-xs font-bold text-[#D1D5DB] mb-1.5">
+                    <label className="block text-xs font-bold text-[#F4F9FF] mb-1.5">
                       2. Select Validity Time
                     </label>
                     <div className="grid grid-cols-5 gap-1.5 mb-2.5">
@@ -1729,8 +1729,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             }}
                             className={`py-2 rounded-lg font-mono-code font-bold text-xs border cursor-pointer transition-all ${
                               isSelected
-                                ? 'bg-[#8B5CF6] border-[#A78BFA] text-white'
-                                : 'bg-[#09080E] border-[#29223E] text-[#9CA3AF] hover:text-white'
+                                ? 'bg-[#00E5FF] border-[#42BFFF] text-[#05070B]'
+                                : 'bg-[#080D14] border-[#00E5FF]/25 text-[#A5B4C7] hover:text-[#F4F9FF]'
                             }`}
                           >
                             {p.label}
@@ -1748,7 +1748,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         value={genDurationValue}
                         onChange={e => setGenDurationValue(e.target.value)}
                         placeholder="Duration"
-                        className="col-span-5 bg-[#09080E] border border-[#2E2646] focus:border-[#8B5CF6] rounded-xl px-3.5 py-2.5 text-sm font-mono-code text-white outline-none"
+                        className="col-span-5 bg-[#080D14] border border-[#00E5FF]/30 focus:border-[#00E5FF] rounded-xl px-3.5 py-2.5 text-sm font-mono-code text-[#F4F9FF] outline-none"
                       />
                       <div className="col-span-7 grid grid-cols-3 gap-1.5">
                         {(['minutes', 'hours', 'days'] as const).map(unit => (
@@ -1758,8 +1758,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             onClick={() => setGenDurationUnit(unit)}
                             className={`py-2.5 rounded-xl font-tech font-bold text-xs uppercase border cursor-pointer ${
                               genDurationUnit === unit
-                                ? 'bg-[#8B5CF6]/25 border-[#8B5CF6] text-white'
-                                : 'bg-[#09080E] border-[#29223E] text-[#9CA3AF]'
+                                ? 'bg-[#00E5FF]/20 border-[#00E5FF] text-[#F4F9FF]'
+                                : 'bg-[#080D14] border-[#00E5FF]/25 text-[#A5B4C7]'
                             }`}
                           >
                             {unit}
@@ -1772,7 +1772,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   {/* 3. How Many Keys */}
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
-                      <label className="block text-xs font-bold text-[#D1D5DB] mb-1.5">
+                      <label className="block text-xs font-bold text-[#F4F9FF] mb-1.5">
                         3. Quantity
                       </label>
                       <div className="grid grid-cols-3 gap-1.5">
@@ -1783,8 +1783,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             onClick={() => setGenCustomCount(cnt)}
                             className={`py-2 rounded-xl font-mono-code font-bold text-xs border cursor-pointer ${
                               genCustomCount === cnt
-                                ? 'bg-[#8B5CF6] border-[#A78BFA] text-white'
-                                : 'bg-[#09080E] border-[#29223E] text-[#9CA3AF]'
+                                ? 'bg-[#00E5FF] border-[#42BFFF] text-[#05070B]'
+                                : 'bg-[#080D14] border-[#00E5FF]/25 text-[#A5B4C7]'
                             }`}
                           >
                             {cnt}x
@@ -1794,7 +1794,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-[#D1D5DB] mb-1.5">
+                      <label className="block text-xs font-bold text-[#F4F9FF] mb-1.5">
                         Note (Optional)
                       </label>
                       <input
@@ -1802,7 +1802,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         value={genNotes}
                         onChange={e => setGenNotes(e.target.value)}
                         placeholder="e.g. Paid via UPI"
-                        className="w-full bg-[#09080E] border border-[#2E2646] focus:border-[#8B5CF6] rounded-xl px-3 py-2 text-xs text-white outline-none"
+                        className="w-full bg-[#080D14] border border-[#00E5FF]/30 focus:border-[#00E5FF] rounded-xl px-3 py-2 text-xs text-[#F4F9FF] outline-none"
                       />
                     </div>
                   </div>
@@ -1816,7 +1816,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <button
                     type="submit"
                     disabled={generating}
-                    className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#7C3AED] to-[#8B5CF6] hover:brightness-110 active:scale-[0.99] text-white font-tech font-black text-base tracking-wider uppercase cursor-pointer shadow-[0_4px_20px_rgba(139,92,246,0.4)] disabled:opacity-50"
+                    className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#00E5FF] via-[#42BFFF] to-[#167DFF] hover:brightness-110 active:scale-[0.99] text-[#05070B] font-tech font-black text-base tracking-wider uppercase cursor-pointer shadow-[0_4px_20px_rgba(0,229,255,0.35)] disabled:opacity-50"
                   >
                     {generating ? 'CREATING KEY...' : '⚡ GENERATE KEY NOW'}
                   </button>
@@ -1825,15 +1825,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
               {/* Newly Generated Key Result Box */}
               {generatedBatch.length > 0 && (
-                <div className="bg-[#111A17] border border-emerald-500/50 rounded-2xl p-4 space-y-3 animate-fade-in">
+                <div className="bg-[#0A141A] border border-[#00E5FF]/50 rounded-2xl p-4 space-y-3 animate-fade-in">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">
+                    <span className="text-xs font-bold text-[#00E5FF] uppercase tracking-wider">
                       ✓ Key Ready to Share ({generatedBatch.length})
                     </span>
                     <button
                       type="button"
                       onClick={() => setActiveTab('keys')}
-                      className="text-xs text-[#C4B5FD] underline cursor-pointer"
+                      className="text-xs text-[#42BFFF] underline cursor-pointer"
                     >
                       See in All Keys →
                     </button>
@@ -1842,13 +1842,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   {generatedBatch.map(k => (
                     <div
                       key={k.id}
-                      className="bg-[#09080E] border border-[#26203B] rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+                      className="bg-[#080D14] border border-[#00E5FF]/25 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
                     >
                       <div className="min-w-0">
-                        <div className="text-[11px] text-[#9CA3AF]">
-                          {k.customerName} · <span className="text-[#C4B5FD] font-semibold">{formatDurationLabel(k)}</span>
+                        <div className="text-[11px] text-[#A5B4C7]">
+                          {k.customerName} · <span className="text-[#00E5FF] font-semibold">{formatDurationLabel(k)}</span>
                         </div>
-                        <div className="text-sm sm:text-base font-mono-code font-bold text-white break-all mt-0.5">
+                        <div className="text-sm sm:text-base font-mono-code font-bold text-[#F4F9FF] break-all mt-0.5">
                           {k.key}
                         </div>
                       </div>
@@ -1857,7 +1857,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         <button
                           type="button"
                           onClick={() => handleCopyText(k.key, k.id, 'Key Copied!')}
-                          className="px-4 py-2 rounded-lg bg-[#8B5CF6] hover:bg-[#7C3AED] text-white font-tech font-bold text-xs uppercase cursor-pointer"
+                          className="px-4 py-2 rounded-lg bg-[#00E5FF] hover:bg-[#42BFFF] text-[#05070B] font-tech font-bold text-xs uppercase cursor-pointer"
                         >
                           {copiedKeyId === k.id ? '✓ COPIED' : '📋 COPY KEY'}
                         </button>
@@ -1875,20 +1875,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           {activeTab === 'keys' && (
             <div className="space-y-3 animate-fade-in">
               {/* Search & Filter Box */}
-              <div className="bg-[#120F1D] border border-[#28213E] rounded-2xl p-3 space-y-2.5">
+              <div className="bg-[#0D1520] border border-[#00E5FF]/25 rounded-2xl p-3 space-y-2.5">
                 <div className="relative">
                   <input
                     type="text"
                     value={keySearch}
                     onChange={e => setKeySearch(e.target.value)}
                     placeholder="🔍 Search by customer name or key..."
-                    className="w-full bg-[#09080E] border border-[#2E2646] focus:border-[#8B5CF6] rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-white outline-none"
+                    className="w-full bg-[#080D14] border border-[#00E5FF]/30 focus:border-[#00E5FF] rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-[#F4F9FF] outline-none"
                   />
                   {keySearch && (
                     <button
                       type="button"
                       onClick={() => setKeySearch('')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#9CA3AF] hover:text-white cursor-pointer"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#A5B4C7] hover:text-[#F4F9FF] cursor-pointer"
                     >
                       ✕
                     </button>
@@ -1911,8 +1911,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       onClick={() => setKeyFilter(tab.id)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
                         keyFilter === tab.id
-                          ? 'bg-[#8B5CF6] text-white'
-                          : 'bg-[#09080E] text-[#9CA3AF] hover:text-white border border-[#241E38]'
+                          ? 'bg-[#00E5FF] text-[#05070B]'
+                          : 'bg-[#080D14] text-[#A5B4C7] hover:text-[#F4F9FF] border border-[#00E5FF]/20'
                       }`}
                     >
                       {tab.label}
@@ -1923,16 +1923,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
               {/* Keys List */}
               {loadingKeys && keys.length === 0 ? (
-                <div className="p-8 text-center bg-[#120F1D] border border-[#26203B] rounded-2xl text-xs text-[#9CA3AF]">
+                <div className="p-8 text-center bg-[#0D1520] border border-[#00E5FF]/25 rounded-2xl text-xs text-[#A5B4C7]">
                   Loading keys...
                 </div>
               ) : filteredKeys.length === 0 ? (
-                <div className="p-8 text-center bg-[#120F1D] border border-[#26203B] rounded-2xl space-y-2">
-                  <div className="text-sm font-bold text-white">No Keys Found</div>
+                <div className="p-8 text-center bg-[#0D1520] border border-[#00E5FF]/25 rounded-2xl space-y-2">
+                  <div className="text-sm font-bold text-[#F4F9FF]">No Keys Found</div>
                   <button
                     type="button"
                     onClick={() => setActiveTab('create')}
-                    className="px-4 py-2 rounded-xl bg-[#8B5CF6] text-xs font-bold text-white cursor-pointer"
+                    className="px-4 py-2 rounded-xl bg-[#00E5FF] text-xs font-bold text-[#05070B] cursor-pointer"
                   >
                     + Create New Key
                   </button>
@@ -1948,7 +1948,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       dispStatus === 'ACTIVE'
                         ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
                         : dispStatus === 'UNUSED'
-                        ? 'bg-[#8B5CF6]/15 text-[#C4B5FD] border-[#8B5CF6]/40'
+                        ? 'bg-[#00E5FF]/15 text-[#42BFFF] border-[#00E5FF]/40'
                         : dispStatus === 'EXPIRED'
                         ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
                         : 'bg-red-500/15 text-red-300 border-red-500/40';
@@ -1956,15 +1956,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     return (
                       <div
                         key={k.id}
-                        className="bg-[#120F1D] border border-[#292240] rounded-2xl p-3.5 space-y-3"
+                        className="bg-[#0D1520] border border-[#00E5FF]/25 rounded-2xl p-3.5 space-y-3"
                       >
                         {/* Row 1: Customer Name + Status & Device Lock Pill */}
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0">
-                            <div className="text-sm font-bold text-white truncate">
+                            <div className="text-sm font-bold text-[#F4F9FF] truncate">
                               👤 {k.customerName || 'Customer'}
                             </div>
-                            <div className="text-[11px] text-[#9CA3AF]">
+                            <div className="text-[11px] text-[#A5B4C7]">
                               ⏱ {formatShortTimeLeft(k, nowMs)}
                             </div>
                           </div>
@@ -1988,14 +1988,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </div>
 
                         {/* Row 2: Key Code + Instant Copy Button */}
-                        <div className="bg-[#09080E] border border-[#241E38] rounded-xl px-3 py-2 flex items-center justify-between gap-2">
-                          <span className="text-xs sm:text-sm font-mono-code font-bold text-[#E9D5FF] break-all">
+                        <div className="bg-[#080D14] border border-[#00E5FF]/25 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
+                          <span className="text-xs sm:text-sm font-mono-code font-bold text-[#F4F9FF] break-all">
                             {k.key}
                           </span>
                           <button
                             type="button"
                             onClick={() => handleCopyText(k.key, k.id)}
-                            className="px-3 py-1.5 rounded-lg bg-[#8B5CF6] hover:bg-[#7C3AED] text-white font-tech font-bold text-xs uppercase cursor-pointer shrink-0"
+                            className="px-3 py-1.5 rounded-lg bg-[#00E5FF] hover:bg-[#42BFFF] text-[#05070B] font-tech font-bold text-xs uppercase cursor-pointer shrink-0"
                           >
                             {copiedKeyId === k.id ? '✓ COPIED' : 'COPY'}
                           </button>
@@ -2009,7 +2009,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             disabled={!isLockedToDevice || actionBusyId === k.id}
                             onClick={() => handleResetKeySession(k)}
                             title="Unlock device so key can be opened again"
-                            className="py-2 px-1.5 rounded-lg bg-[#1B162E] hover:bg-[#282044] border border-[#8B5CF6]/40 text-[11px] font-bold text-[#C4B5FD] cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed text-center"
+                            className="py-2 px-1.5 rounded-lg bg-[#0A1018] hover:bg-[#111C2B] border border-[#00E5FF]/40 text-[11px] font-bold text-[#42BFFF] cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed text-center"
                           >
                             🔓 Unlock
                           </button>
@@ -2022,7 +2022,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               setRenewDurationVal('7');
                               setRenewDurationUnit('days');
                             }}
-                            className="py-2 px-1.5 rounded-lg bg-[#171E2E] hover:bg-[#1E293B] border border-sky-500/35 text-[11px] font-bold text-sky-300 cursor-pointer text-center"
+                            className="py-2 px-1.5 rounded-lg bg-[#0A1018] hover:bg-[#111C2B] border border-[#42BFFF]/40 text-[11px] font-bold text-[#42BFFF] cursor-pointer text-center"
                           >
                             ➕ +Time
                           </button>
@@ -2066,13 +2066,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           {activeTab === 'settings' && (
             <form onSubmit={handleSaveAllWebsiteSettings} className="space-y-4 animate-fade-in">
               {/* SECTION 1: WEBSITE NAME & LOGO */}
-              <div className="bg-[#120F1D] border border-[#28213E] rounded-2xl p-4 space-y-3.5">
-                <h3 className="text-sm font-black font-tech uppercase tracking-wider text-[#C4B5FD]">
+              <div className="bg-[#0D1520] border border-[#00E5FF]/25 rounded-2xl p-4 space-y-3.5">
+                <h3 className="text-sm font-black font-tech uppercase tracking-wider text-[#00E5FF]">
                   1. Website Name & Logo
                 </h3>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#D1D5DB] mb-1">
+                  <label className="block text-xs font-semibold text-[#F4F9FF] mb-1">
                     Website / Panel Name (Updates Everywhere)
                   </label>
                   <input
@@ -2080,12 +2080,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     value={panelName}
                     onChange={e => setPanelName(e.target.value)}
                     placeholder="e.g. REVOX PANEL"
-                    className="w-full bg-[#09080E] border border-[#2E2646] focus:border-[#8B5CF6] rounded-xl px-3.5 py-2.5 text-sm font-bold text-white outline-none"
+                    className="w-full bg-[#080D14] border border-[#00E5FF]/30 focus:border-[#00E5FF] rounded-xl px-3.5 py-2.5 text-sm font-bold text-[#F4F9FF] outline-none"
                   />
                 </div>
 
-                <div className="flex items-center gap-3.5 bg-[#09080E] p-3 rounded-xl border border-[#221C34]">
-                  <div className="w-16 h-16 rounded-xl bg-[#141022] border border-[#2E2646] flex items-center justify-center overflow-hidden shrink-0 p-1">
+                <div className="flex items-center gap-3.5 bg-[#080D14] p-3 rounded-xl border border-[#00E5FF]/25">
+                  <div className="w-16 h-16 rounded-xl bg-[#0A1018] border border-[#00E5FF]/30 flex items-center justify-center overflow-hidden shrink-0 p-1">
                     <img
                       src={logoPreview || currentSettings.logoUrl || '/assets/revox-logo.png'}
                       alt="Logo"
@@ -2105,7 +2105,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         type="button"
                         disabled={uploadingLogo}
                         onClick={() => fileInputRef.current?.click()}
-                        className="px-3.5 py-2 rounded-lg bg-[#8B5CF6] hover:bg-[#7C3AED] text-white font-tech font-bold text-xs uppercase cursor-pointer"
+                        className="px-3.5 py-2 rounded-lg bg-[#00E5FF] hover:bg-[#42BFFF] text-[#05070B] font-tech font-bold text-xs uppercase cursor-pointer"
                       >
                         {uploadingLogo ? 'Uploading...' : '📁 Upload Logo'}
                       </button>
@@ -2120,13 +2120,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             showToast('Default Logo Applied!', 'success');
                           } catch {}
                         }}
-                        className="px-3 py-2 rounded-lg bg-[#1B162B] border border-[#8B5CF6]/40 text-xs font-bold text-[#C4B5FD] cursor-pointer"
+                        className="px-3 py-2 rounded-lg bg-[#0A1018] border border-[#00E5FF]/40 text-xs font-bold text-[#42BFFF] cursor-pointer"
                       >
                         Default Logo
                       </button>
                     </div>
                     <div>
-                      <label className="block text-[11px] text-[#9CA3AF]">
+                      <label className="block text-[11px] text-[#A5B4C7]">
                         Logo Size: {logoSize}px
                       </label>
                       <input
@@ -2135,7 +2135,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         max={380}
                         value={logoSize}
                         onChange={e => setLogoSize(Number(e.target.value))}
-                        className="w-full accent-[#8B5CF6]"
+                        className="w-full accent-[#00E5FF]"
                       />
                     </div>
                   </div>
@@ -2143,17 +2143,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
 
               {/* SECTION 2: GAMEPLAY VIDEO & FEATURE POINTS */}
-              <div className="bg-[#120F1D] border border-[#28213E] rounded-2xl p-4 space-y-3.5">
+              <div className="bg-[#0D1520] border border-[#00E5FF]/25 rounded-2xl p-4 space-y-3.5">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-black font-tech uppercase tracking-wider text-[#C4B5FD]">
+                  <h3 className="text-sm font-black font-tech uppercase tracking-wider text-[#00E5FF]">
                     2. Gameplay Video & Panel Points
                   </h3>
-                  <label className="flex items-center gap-1.5 text-xs text-[#D1D5DB] cursor-pointer">
+                  <label className="flex items-center gap-1.5 text-xs text-[#F4F9FF] cursor-pointer">
                     <input
                       type="checkbox"
                       checked={introVideoEnabled}
                       onChange={e => setIntroVideoEnabled(e.target.checked)}
-                      className="accent-[#8B5CF6]"
+                      className="accent-[#00E5FF]"
                     />
                     <span>Show on Start</span>
                   </label>
@@ -2172,7 +2172,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       type="button"
                       disabled={uploadingVideo}
                       onClick={() => videoFileInputRef.current?.click()}
-                      className="px-3.5 py-2 rounded-lg bg-[#8B5CF6] hover:bg-[#7C3AED] text-white font-tech font-bold text-xs uppercase cursor-pointer disabled:opacity-70"
+                      className="px-3.5 py-2 rounded-lg bg-[#00E5FF] hover:bg-[#42BFFF] text-[#05070B] font-tech font-bold text-xs uppercase cursor-pointer disabled:opacity-70"
                     >
                       {uploadingVideo
                         ? `Uploading Video${videoUploadProgress !== null ? ` (${videoUploadProgress}%)` : '...'}`
@@ -2202,9 +2202,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
 
                   {uploadingVideo && videoUploadProgress !== null && (
-                    <div className="w-full bg-[#09080E] border border-[#2E2646] rounded-full h-2 overflow-hidden">
+                    <div className="w-full bg-[#080D14] border border-[#00E5FF]/30 rounded-full h-2 overflow-hidden">
                       <div
-                        className="bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#C084FC] h-full transition-all duration-150"
+                        className="bg-gradient-to-r from-[#00E5FF] via-[#42BFFF] to-[#167DFF] h-full transition-all duration-150"
                         style={{ width: `${Math.max(4, videoUploadProgress)}%` }}
                       />
                     </div>
@@ -2212,7 +2212,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs text-[#9CA3AF] mb-1">
+                  <label className="block text-xs text-[#A5B4C7] mb-1">
                     Or Paste Video Link (YouTube / MP4)
                   </label>
                   <input
@@ -2220,18 +2220,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     value={introVideoUrl}
                     onChange={e => setIntroVideoUrl(e.target.value)}
                     placeholder="https://..."
-                    className="w-full bg-[#09080E] border border-[#2E2646] focus:border-[#8B5CF6] rounded-xl px-3.5 py-2 text-xs text-white outline-none"
+                    className="w-full bg-[#080D14] border border-[#00E5FF]/30 focus:border-[#00E5FF] rounded-xl px-3.5 py-2 text-xs text-[#F4F9FF] outline-none"
                   />
                 </div>
 
                 {introVideoUrl && (
-                  <div className="rounded-xl overflow-hidden border border-[#2E2646] bg-black">
+                  <div className="rounded-xl overflow-hidden border border-[#00E5FF]/30 bg-black">
                     <Direct16x9VideoPlayer videoUrl={introVideoUrl} />
                   </div>
                 )}
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#D1D5DB] mb-1">
+                  <label className="block text-xs font-semibold text-[#F4F9FF] mb-1">
                     Panel Features / Points (Shown below Gameplay Video, 1 per line)
                   </label>
                   <textarea
@@ -2239,19 +2239,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     value={introFeaturePoints.join('\n')}
                     onChange={e => setIntroFeaturePoints(e.target.value.split('\n'))}
                     placeholder="Write each feature point on a new line..."
-                    className="w-full bg-[#09080E] border border-[#2E2646] focus:border-[#8B5CF6] rounded-xl p-3 text-xs text-white outline-none leading-relaxed"
+                    className="w-full bg-[#080D14] border border-[#00E5FF]/30 focus:border-[#00E5FF] rounded-xl p-3 text-xs text-[#F4F9FF] outline-none leading-relaxed"
                   />
                 </div>
               </div>
 
               {/* SECTION 3: WHATSAPP & HOME CARD */}
-              <div className="bg-[#120F1D] border border-[#28213E] rounded-2xl p-4 space-y-3.5">
-                <h3 className="text-sm font-black font-tech uppercase tracking-wider text-[#C4B5FD]">
+              <div className="bg-[#0D1520] border border-[#00E5FF]/25 rounded-2xl p-4 space-y-3.5">
+                <h3 className="text-sm font-black font-tech uppercase tracking-wider text-[#00E5FF]">
                   3. WhatsApp Number & Home Notice
                 </h3>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#D1D5DB] mb-1">
+                  <label className="block text-xs font-semibold text-[#F4F9FF] mb-1">
                     WhatsApp Number or Link (For "GET KEY" Button)
                   </label>
                   <input
@@ -2259,31 +2259,31 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     value={whatsappUrl}
                     onChange={e => setWhatsappUrl(e.target.value)}
                     placeholder="e.g. 919876543210"
-                    className="w-full bg-[#09080E] border border-[#2E2646] focus:border-[#8B5CF6] rounded-xl px-3.5 py-2.5 text-xs text-white outline-none"
+                    className="w-full bg-[#080D14] border border-[#00E5FF]/30 focus:border-[#00E5FF] rounded-xl px-3.5 py-2.5 text-xs text-[#F4F9FF] outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#D1D5DB] mb-1">
+                  <label className="block text-xs font-semibold text-[#F4F9FF] mb-1">
                     Home Announcement Points (1 per line)
                   </label>
                   <textarea
                     rows={3}
                     value={annLines.join('\n')}
                     onChange={e => setAnnLines(e.target.value.split('\n'))}
-                    className="w-full bg-[#09080E] border border-[#2E2646] focus:border-[#8B5CF6] rounded-xl p-3 text-xs text-white outline-none"
+                    className="w-full bg-[#080D14] border border-[#00E5FF]/30 focus:border-[#00E5FF] rounded-xl p-3 text-xs text-[#F4F9FF] outline-none"
                   />
                 </div>
               </div>
 
               {/* SECTION 4: DASHBOARD BUTTON LINKS */}
-              <div className="bg-[#120F1D] border border-[#28213E] rounded-2xl p-4 space-y-3.5">
-                <h3 className="text-sm font-black font-tech uppercase tracking-wider text-[#C4B5FD]">
+              <div className="bg-[#0D1520] border border-[#00E5FF]/25 rounded-2xl p-4 space-y-3.5">
+                <h3 className="text-sm font-black font-tech uppercase tracking-wider text-[#00E5FF]">
                   4. Download Panel & Setup Video Links
                 </h3>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#D1D5DB] mb-1">
+                  <label className="block text-xs font-semibold text-[#F4F9FF] mb-1">
                     DOWNLOAD PANEL Button Link
                   </label>
                   <input
@@ -2291,12 +2291,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     value={downloadHackUrl}
                     onChange={e => setDownloadHackUrl(e.target.value)}
                     placeholder="https://..."
-                    className="w-full bg-[#09080E] border border-[#2E2646] focus:border-[#8B5CF6] rounded-xl px-3.5 py-2.5 text-xs text-white outline-none"
+                    className="w-full bg-[#080D14] border border-[#00E5FF]/30 focus:border-[#00E5FF] rounded-xl px-3.5 py-2.5 text-xs text-[#F4F9FF] outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#D1D5DB] mb-1">
+                  <label className="block text-xs font-semibold text-[#F4F9FF] mb-1">
                     SETUP VIDEO Button Link
                   </label>
                   <input
@@ -2304,7 +2304,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     value={setupVideoUrl}
                     onChange={e => setSetupVideoUrl(e.target.value)}
                     placeholder="https://..."
-                    className="w-full bg-[#09080E] border border-[#2E2646] focus:border-[#8B5CF6] rounded-xl px-3.5 py-2.5 text-xs text-white outline-none"
+                    className="w-full bg-[#080D14] border border-[#00E5FF]/30 focus:border-[#00E5FF] rounded-xl px-3.5 py-2.5 text-xs text-[#F4F9FF] outline-none"
                   />
                 </div>
               </div>
@@ -2313,7 +2313,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <button
                 type="submit"
                 disabled={savingAllSettings}
-                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#7C3AED] to-[#8B5CF6] hover:brightness-110 text-white font-tech font-black text-base tracking-wider uppercase cursor-pointer shadow-[0_4px_25px_rgba(139,92,246,0.45)] disabled:opacity-50"
+                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#00E5FF] via-[#42BFFF] to-[#167DFF] hover:brightness-110 text-[#05070B] font-tech font-black text-base tracking-wider uppercase cursor-pointer shadow-[0_4px_25px_rgba(0,229,255,0.38)] disabled:opacity-50"
               >
                 {savingAllSettings ? 'SAVING ALL CHANGES...' : '💾 SAVE ALL WEBSITE SETTINGS'}
               </button>
@@ -2325,8 +2325,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       {/* Simple Modal: Delete Key Confirmation */}
       {deleteTargetKey && (
         <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
-          <div className="w-full max-w-xs bg-[#120F1D] border border-red-500/50 rounded-2xl p-5 text-center space-y-3">
-            <div className="text-base font-black font-tech uppercase text-white">
+          <div className="w-full max-w-xs bg-[#0D1520] border border-red-500/50 rounded-2xl p-5 text-center space-y-3">
+            <div className="text-base font-black font-tech uppercase text-[#F4F9FF]">
               Delete This Key?
             </div>
             <div className="text-xs font-mono-code text-red-300 break-all">
@@ -2336,7 +2336,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <button
                 type="button"
                 onClick={() => setDeleteTargetKey(null)}
-                className="py-2.5 rounded-xl bg-[#1D182E] text-xs font-bold text-white cursor-pointer"
+                className="py-2.5 rounded-xl bg-[#0A1018] border border-[#00E5FF]/25 text-xs font-bold text-[#F4F9FF] cursor-pointer"
               >
                 Cancel
               </button>
@@ -2358,23 +2358,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
           <form
             onSubmit={handleConfirmRenewKey}
-            className="w-full max-w-xs bg-[#120F1D] border border-[#8B5CF6]/50 rounded-2xl p-5 space-y-3.5"
+            className="w-full max-w-xs bg-[#0D1520] border border-[#00E5FF]/45 rounded-2xl p-5 space-y-3.5"
           >
             <div className="flex items-center justify-between">
-              <span className="text-sm font-black font-tech uppercase text-white">
+              <span className="text-sm font-black font-tech uppercase text-[#F4F9FF]">
                 ➕ Add Extra Time
               </span>
               <button
                 type="button"
                 onClick={() => setRenewTargetKey(null)}
-                className="text-xs text-[#9CA3AF] hover:text-white cursor-pointer"
+                className="text-xs text-[#A5B4C7] hover:text-[#F4F9FF] cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <div className="text-xs text-[#9CA3AF] truncate">
-              {renewTargetKey.customerName} · <span className="text-[#C4B5FD] font-mono-code">{renewTargetKey.key}</span>
+            <div className="text-xs text-[#A5B4C7] truncate">
+              {renewTargetKey.customerName} · <span className="text-[#00E5FF] font-mono-code">{renewTargetKey.key}</span>
             </div>
 
             <div className="flex gap-2">
@@ -2384,7 +2384,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 max={9999}
                 value={renewDurationVal}
                 onChange={e => setRenewDurationVal(e.target.value)}
-                className="w-24 bg-[#09080E] border border-[#2E2646] rounded-xl px-3 py-2 text-sm font-mono-code text-white outline-none"
+                className="w-24 bg-[#080D14] border border-[#00E5FF]/30 rounded-xl px-3 py-2 text-sm font-mono-code text-[#F4F9FF] outline-none"
               />
               <div className="flex-1 grid grid-cols-3 gap-1">
                 {(['minutes', 'hours', 'days'] as const).map(u => (
@@ -2394,8 +2394,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     onClick={() => setRenewDurationUnit(u)}
                     className={`rounded-lg text-[10px] font-bold uppercase cursor-pointer border ${
                       renewDurationUnit === u
-                        ? 'bg-[#8B5CF6] border-[#A78BFA] text-white'
-                        : 'bg-[#09080E] border-[#26203B] text-[#9CA3AF]'
+                        ? 'bg-[#00E5FF] border-[#42BFFF] text-[#05070B]'
+                        : 'bg-[#080D14] border-[#00E5FF]/25 text-[#A5B4C7]'
                     }`}
                   >
                     {u}
@@ -2408,14 +2408,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <button
                 type="button"
                 onClick={() => setRenewTargetKey(null)}
-                className="py-2.5 rounded-xl bg-[#1D182E] text-xs font-bold text-white cursor-pointer"
+                className="py-2.5 rounded-xl bg-[#0A1018] border border-[#00E5FF]/25 text-xs font-bold text-[#F4F9FF] cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={renewingKey}
-                className="py-2.5 rounded-xl bg-[#8B5CF6] text-xs font-bold text-white cursor-pointer"
+                className="py-2.5 rounded-xl bg-[#00E5FF] text-xs font-bold text-[#05070B] cursor-pointer"
               >
                 {renewingKey ? 'Adding...' : 'Add Time'}
               </button>

@@ -14,8 +14,15 @@ export const CenterLogo: React.FC<CenterLogoProps> = ({ settings }) => {
   }, [settings.logoUrl]);
 
   const rawUrl = settings.logoUrl;
-  const isDefaultLogo = !rawUrl || rawUrl === '/assets/default-logo.png';
-  const logoSrc = loadFailed ? '/assets/default-logo.png' : (rawUrl || '/assets/default-logo.png');
+  const resolvedDefaultLogo = '/assets/revox-logo.png?v=120';
+  const normalizedUrl =
+    !rawUrl ||
+    rawUrl === '/assets/revox-logo.png' ||
+    rawUrl === '/assets/default-logo.png' ||
+    rawUrl.startsWith('/assets/revox-logo.png?')
+      ? resolvedDefaultLogo
+      : rawUrl;
+  const logoSrc = loadFailed ? resolvedDefaultLogo : normalizedUrl;
 
   // Prominently sized logo covering the central area (290px default, responsive up to 340px)
   const rawSize = settings.logoSize;
@@ -29,34 +36,40 @@ export const CenterLogo: React.FC<CenterLogoProps> = ({ settings }) => {
 
   return (
     <div 
-      className="w-full flex items-center justify-center my-1 sm:my-2 select-none transition-all duration-300 shrink-0"
+      className="w-full flex items-center justify-center my-0.5 sm:my-1.5 select-none transition-all duration-300 shrink-0"
       style={{
         transform: `translateY(${posY}px)`,
       }}
     >
       <div className="relative group flex items-center justify-center w-full max-w-[340px] sm:max-w-[370px] px-2">
-        {/* Glowing violet ambient back-glow aura */}
+        {/* Outer Cyber Ice Blue Ambient Aura */}
         <div 
-          className="absolute inset-0 rounded-full blur-2xl opacity-50 pointer-events-none transition-opacity duration-500 group-hover:opacity-75"
+          className="absolute inset-0 rounded-full blur-2xl opacity-65 pointer-events-none transition-opacity duration-500 group-hover:opacity-90"
           style={{
-            background: 'radial-gradient(circle, rgba(168, 85, 247, 0.85) 0%, rgba(139, 92, 246, 0.35) 45%, transparent 75%)',
-            transform: 'scale(1.2)'
+            background: 'radial-gradient(circle, rgba(0, 229, 255, 0.62) 0%, rgba(66, 191, 255, 0.32) 42%, rgba(22, 125, 255, 0.14) 68%, transparent 82%)',
+            transform: 'scale(1.22)'
+          }}
+        />
+
+        {/* Inner Intense Cyan Core Backlight */}
+        <div 
+          className="absolute w-36 h-36 sm:w-40 sm:h-40 rounded-full blur-xl opacity-55 pointer-events-none"
+          style={{
+            background: 'radial-gradient(circle, rgba(244, 249, 255, 0.45) 0%, rgba(0, 229, 255, 0.55) 45%, transparent 75%)',
           }}
         />
 
         <img
           key={logoSrc}
           src={logoSrc}
-          alt={settings.websiteTitle || 'Portal Emblem'}
+          alt={settings.websiteTitle || 'REVOX PANEL'}
           onError={() => setLoadFailed(true)}
-          className="relative z-10 object-contain drop-shadow-[0_12px_40px_rgba(168,85,247,0.55)] filter hover:brightness-110 transition-all duration-300"
+          className="relative z-10 object-contain animate-revox-logo filter brightness-[1.04] contrast-[1.04] hover:brightness-110 transition-all duration-300"
           style={{
             width: `${width}px`,
             maxWidth: '92vw',
-            maxHeight: 'min(240px, 32vh)',
-            filter: (isDefaultLogo || loadFailed)
-              ? 'hue-rotate(275deg) brightness(1.12) saturate(1.28)'
-              : 'none',
+            maxHeight: 'min(248px, 33vh)',
+            filter: 'drop-shadow(0 0 18px rgba(0, 229, 255, 0.58)) drop-shadow(0 12px 30px rgba(22, 125, 255, 0.42))',
           }}
           referrerPolicy="no-referrer"
         />

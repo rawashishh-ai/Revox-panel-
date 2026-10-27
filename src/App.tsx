@@ -76,6 +76,9 @@ export default function App() {
           if (!parsed.introVideoUrl || parsed.introVideoUrl.includes('gameplay_v14_1792905894809')) {
             parsed.introVideoUrl = '/uploads/gameplay_v12_1792903967616.mp4';
           }
+          if (!parsed.themeColor || parsed.themeColor === '#A020F0') {
+            parsed.themeColor = '#00E5FF';
+          }
           latestVersionRef.current = Number(parsed.version) || 1;
           latestUpdatedAtRef.current = parsed.updatedAt ? new Date(parsed.updatedAt).getTime() : 0;
           return parsed;
@@ -164,7 +167,7 @@ export default function App() {
               ]),
           whatsappNumber: incoming.whatsappNumber ?? prev?.whatsappNumber ?? '',
           whatsappUrl: incoming.whatsappUrl ?? prev?.whatsappUrl ?? 'https://wa.me/1234567890',
-          themeColor: incoming.themeColor ?? prev?.themeColor ?? '#A020F0',
+          themeColor: incoming.themeColor && incoming.themeColor !== '#A020F0' ? incoming.themeColor : '#00E5FF',
           buttonSettings: incoming.buttonSettings ?? prev?.buttonSettings,
           downloadHackUrl: incoming.downloadHackUrl ?? prev?.downloadHackUrl ?? 'https://t.me/silentx_phantom_official',
           setupVideoUrl: incoming.setupVideoUrl ?? prev?.setupVideoUrl ?? 'https://www.youtube.com/',
@@ -616,7 +619,7 @@ export default function App() {
       activeSettings.introVideoEnabled !== false);
 
   return (
-    <div className="relative h-[100dvh] max-h-[100dvh] bg-[#050505] text-[#e4e4e7] flex flex-col justify-between overflow-hidden select-none">
+    <div className="relative h-[100dvh] max-h-[100dvh] bg-[#05070B] text-[#F4F9FF] flex flex-col justify-between overflow-hidden select-none">
       {/* Background scanline pattern & radial gradient vignette */}
       <div className="fixed inset-0 scanlines-overlay z-0 pointer-events-none" />
       <div className="fixed inset-0 vignette-radial z-0 pointer-events-none" />
@@ -638,10 +641,11 @@ export default function App() {
               setManualGameplayView(true);
             }}
             title="Watch Panel Gameplay Video"
-            className="bg-[#120d1d] hover:bg-[#1e1430] active:scale-95 border border-[#A020F0]/60 text-[#e9d5ff] hover:text-white text-xs font-bold tracking-wider px-3 py-1.5 rounded-[4px] flex items-center gap-1.5 cursor-pointer transition-all shadow-[0_0_12px_rgba(160,32,240,0.25)] font-tech uppercase"
+            className="relative overflow-hidden bg-gradient-to-b from-[#122033] via-[#0B1420] to-[#070C14] hover:from-[#162840] hover:to-[#0A1320] active:scale-95 border border-[#00E5FF]/65 hover:border-[#FFFFFF] text-[#FFFFFF] text-xs font-bold tracking-wider px-3.5 py-1.5 rounded-[4px] flex items-center gap-1.5 cursor-pointer transition-all shadow-[0_0_14px_rgba(0,229,255,0.28),inset_0_1px_1px_rgba(255,255,255,0.4)] hover:shadow-[0_0_20px_rgba(0,229,255,0.5)] font-tech uppercase"
           >
-            <span>🎬</span>
-            <span>GAMEPLAY</span>
+            <span className="absolute top-0 left-2 right-2 h-[1px] bg-gradient-to-r from-transparent via-white/80 to-transparent pointer-events-none" />
+            <span className="drop-shadow-[0_0_6px_rgba(0,229,255,0.75)]">🎬</span>
+            <span className="drop-shadow-[0_0_6px_rgba(0,229,255,0.45)]">GAMEPLAY</span>
           </button>
         )}
       </header>
@@ -653,27 +657,27 @@ export default function App() {
         }`}
       >
         {initialLoading && !settings ? (
-          /* Premium Dark Purple Loading Skeleton (prevents old hardcoded settings from flashing) */
+          /* Premium Dark Cyber Ice Blue Loading Skeleton */
           <div className="flex flex-col justify-between h-full py-2 animate-pulse">
-            <div className="h-44 w-full bg-[#0e0c14] border border-[#3b1c63]/60 rounded-[4px] p-4 flex flex-col justify-between">
-              <div className="h-4 w-1/3 bg-[#27173d] rounded" />
-              <div className="h-6 w-2/3 bg-[#321b4f] rounded" />
+            <div className="h-44 w-full bg-[#0D1520] border border-[#00E5FF]/30 rounded-[4px] p-4 flex flex-col justify-between">
+              <div className="h-4 w-1/3 bg-[#122030] rounded" />
+              <div className="h-6 w-2/3 bg-[#16293D] rounded" />
               <div className="space-y-2">
-                <div className="h-3 w-full bg-[#1e1330] rounded" />
-                <div className="h-3 w-5/6 bg-[#1e1330] rounded" />
-                <div className="h-3 w-4/6 bg-[#1e1330] rounded" />
+                <div className="h-3 w-full bg-[#0A1018] rounded" />
+                <div className="h-3 w-5/6 bg-[#0A1018] rounded" />
+                <div className="h-3 w-4/6 bg-[#0A1018] rounded" />
               </div>
-              <div className="h-8 w-full bg-[#27173d] rounded" />
+              <div className="h-8 w-full bg-[#122030] rounded" />
             </div>
 
             <div className="flex items-center justify-center my-4">
-              <div className="w-28 h-28 rounded-full bg-[#1a1029] border border-[#4c1d95]/40" />
+              <div className="w-28 h-28 rounded-full bg-[#0D1520] border border-[#00E5FF]/30" />
             </div>
 
             <div className="space-y-2.5">
-              <div className="h-11 w-full bg-[#120e1a] border border-[#3b1c63]/50 rounded" />
-              <div className="h-10 w-full bg-[#24113b] rounded" />
-              <div className="h-12 w-full bg-[#3b1564] rounded" />
+              <div className="h-11 w-full bg-[#080D14] border border-[#00E5FF]/30 rounded" />
+              <div className="h-10 w-full bg-[#0D1520] rounded" />
+              <div className="h-12 w-full bg-[#167DFF]/35 rounded" />
             </div>
           </div>
         ) : showIntroVideoGate ? (

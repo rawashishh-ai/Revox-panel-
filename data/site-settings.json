@@ -1,6 +1,6 @@
 {
-  "logoStoragePath": "/assets/default-logo.png",
-  "logoUrl": "/assets/revox-logo.png",
+  "logoStoragePath": "/assets/default-logo.png?v=120",
+  "logoUrl": "/assets/revox-logo.png?v=120",
   "logoSize": 290,
   "logoPositionY": 0,
   "websiteTitle": "REVOX PANEL",
@@ -24,7 +24,7 @@
   ],
   "whatsappNumber": "https://wa.me/9623508876",
   "whatsappUrl": "https://wa.me/9623508876",
-  "themeColor": "#A020F0",
+  "themeColor": "#00E5FF",
   "buttonSettings": {
     "downloadHackUrl": "https://www.mediafire.com/file/fjyc9omx56r777v/M1NX_VIP.apk/file",
     "setupVideoUrl": "https://youtu.be/lWQJCX7U_3U?si=4pRzgMXvVYgR5IUT",
@@ -53,7 +53,7 @@
   "keySalesEnabled": true,
   "keyPriceINR": 199,
   "keySaleDurationDays": 30,
-  "updatedAt": "2026-10-25T08:22:32.238Z",
+  "updatedAt": "2026-10-27T16:20:00.000Z",
   "updatedBy": "Admin",
-  "version": 106
+  "version": 120
 }

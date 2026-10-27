@@ -197,20 +197,20 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
     circleCircumference - (connectProgress / 100) * circleCircumference;
 
   return (
-    <div className="w-full max-w-[390px] mx-auto select-none flex flex-col gap-3 text-[#FFFFFF] animate-page-fade">
+    <div className="w-full max-w-[390px] mx-auto select-none flex flex-col gap-3 text-[#F4F9FF] animate-page-fade">
       
       {/* ========================================================
           FULL-SCREEN 12-SECOND FUTURISTIC CONNECTION ANIMATION
           ======================================================== */}
       {connecting && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center p-5 bg-[#050308]/96 backdrop-blur-xl animate-fade-in select-none overflow-hidden">
-          {/* Scanlines & Deep Neon Purple Radial Atmosphere */}
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center p-5 bg-[#05070B]/96 backdrop-blur-xl animate-fade-in select-none overflow-hidden">
+          {/* Scanlines & Deep Cyber Ice-Blue Radial Atmosphere */}
           <div className="absolute inset-0 scanlines-overlay opacity-55 pointer-events-none" />
           <div
             className={`absolute inset-0 transition-opacity duration-700 pointer-events-none ${
               connectStage === 5
-                ? 'bg-[radial-gradient(circle_at_50%_46%,rgba(0,229,164,0.18)_0%,rgba(160,32,240,0.10)_42%,transparent_75%)]'
-                : 'bg-[radial-gradient(circle_at_50%_46%,rgba(160,32,240,0.24)_0%,rgba(196,92,255,0.08)_45%,transparent_75%)]'
+                ? 'bg-[radial-gradient(circle_at_50%_46%,rgba(0,229,164,0.18)_0%,rgba(0,229,255,0.10)_42%,transparent_75%)]'
+                : 'bg-[radial-gradient(circle_at_50%_46%,rgba(0,229,255,0.22)_0%,rgba(22,125,255,0.08)_45%,transparent_75%)]'
             }`}
           />
 
@@ -233,7 +233,7 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
                 className={`absolute rounded-full animate-cyber-particle ${p.size} ${
                   connectStage === 5
                     ? 'bg-[#00E5A4] shadow-[0_0_10px_#00E5A4]'
-                    : 'bg-[#C45CFF] shadow-[0_0_10px_#A020F0]'
+                    : 'bg-[#00E5FF] shadow-[0_0_10px_#00E5FF]'
                 }`}
               />
             ))}
@@ -243,24 +243,24 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
           <div
             className={`relative w-full max-w-[356px] p-[1px] clip-card-br transition-all duration-500 ${
               connectStage === 5
-                ? 'bg-gradient-to-b from-[#00E5A4] via-[#A020F0]/60 to-[#00E5A4]/40 shadow-[0_0_50px_rgba(0,229,164,0.28)]'
-                : 'bg-gradient-to-b from-[#C45CFF] via-[#A020F0] to-[#3b0f66] shadow-[0_0_50px_rgba(160,32,240,0.38)]'
+                ? 'bg-gradient-to-b from-[#00E5A4] via-[#00E5FF]/60 to-[#00E5A4]/40 shadow-[0_0_50px_rgba(0,229,164,0.28)]'
+                : 'bg-gradient-to-b from-[#00E5FF] via-[#42BFFF] to-[#167DFF]/50 shadow-[0_0_46px_rgba(0,229,255,0.32)]'
             }`}
           >
-            <div className="relative bg-[#0A0712]/95 clip-card-br px-6 py-7 flex flex-col items-center justify-between min-h-[340px] overflow-hidden">
+            <div className="relative bg-[#0D1520]/95 clip-card-br px-6 py-7 flex flex-col items-center justify-between min-h-[340px] overflow-hidden">
               {/* Top Cyber Corner Accents */}
-              <div className="w-full flex items-center justify-between text-[9.5px] font-mono-code font-bold tracking-[0.22em] text-[#9993A5] uppercase">
+              <div className="w-full flex items-center justify-between text-[9.5px] font-mono-code font-bold tracking-[0.22em] text-[#A5B4C7] uppercase">
                 <span className="flex items-center gap-1.5">
                   <span
                     className={`w-1.5 h-1.5 rounded-full ${
                       connectStage === 5
                         ? 'bg-[#00E5A4] shadow-[0_0_8px_#00E5A4]'
-                        : 'bg-[#C45CFF] shadow-[0_0_8px_#C45CFF] animate-pulse'
+                        : 'bg-[#00E5FF] shadow-[0_0_8px_#00E5FF] animate-pulse'
                     }`}
                   />
                   <span>STAGE 0{connectStage} / 05</span>
                 </span>
-                <span className="text-[#C45CFF]">{roundedProgress}%</span>
+                <span className="text-[#00E5FF]">{roundedProgress}%</span>
               </div>
 
               {/* Laser Sweep Line */}
@@ -268,7 +268,7 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
                 className={`absolute inset-x-0 h-[1.5px] animate-laser pointer-events-none ${
                   connectStage === 5
                     ? 'bg-gradient-to-r from-transparent via-[#00E5A4] to-transparent shadow-[0_0_12px_#00E5A4]'
-                    : 'bg-gradient-to-r from-transparent via-[#C45CFF] to-transparent shadow-[0_0_12px_#A020F0]'
+                    : 'bg-gradient-to-r from-transparent via-[#00E5FF] to-transparent shadow-[0_0_12px_#00E5FF]'
                 }`}
               />
 
@@ -276,11 +276,11 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
                   STAGE-BY-STAGE VISUAL CENTERPIECE (0s - 12s)
                   ==================================================== */}
               <div className="my-4 flex items-center justify-center w-full h-[148px] relative">
-                {/* 0–2 SECONDS: REVOX LOGO WITH CINEMATIC PURPLE GLOW & SMOOTH ZOOM */}
+                {/* 0–2 SECONDS: REVOX LOGO WITH CINEMATIC CYAN GLOW & SMOOTH ZOOM */}
                 {connectStage === 1 && (
                   <div key="stage-1" className="relative flex flex-col items-center justify-center animate-stage-in">
-                    <div className="absolute w-32 h-32 rounded-full bg-[#A020F0]/25 blur-xl animate-pulse pointer-events-none" />
-                    <div className="absolute w-28 h-28 rounded-full border border-[#C45CFF]/35 animate-ping pointer-events-none" style={{ animationDuration: '2s' }} />
+                    <div className="absolute w-32 h-32 rounded-full bg-[#00E5FF]/22 blur-xl animate-pulse pointer-events-none" />
+                    <div className="absolute w-28 h-28 rounded-full border border-[#00E5FF]/35 animate-ping pointer-events-none" style={{ animationDuration: '2s' }} />
                     <img
                       src={activeLogoUrl}
                       alt="REVOX SYSTEM"
@@ -295,27 +295,27 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
                 {/* 2–5 SECONDS: ROTATING FUTURISTIC CIRCULAR SCANNER */}
                 {connectStage === 2 && (
                   <div key="stage-2" className="relative w-32 h-32 flex items-center justify-center animate-stage-in">
-                    <div className="absolute inset-0 rounded-full bg-[#A020F0]/15 blur-lg pointer-events-none" />
+                    <div className="absolute inset-0 rounded-full bg-[#00E5FF]/15 blur-lg pointer-events-none" />
                     {/* Outer Dashed Ring */}
-                    <div className="absolute inset-0 rounded-full border-2 border-dashed border-[#C45CFF]/55 animate-radar-spin" />
-                    {/* Counter-RotatingSegmented Ring */}
-                    <div className="absolute inset-2.5 rounded-full border-2 border-t-[#A020F0] border-r-transparent border-b-[#C45CFF] border-l-transparent animate-radar-reverse shadow-[0_0_18px_rgba(160,32,240,0.45)]" />
+                    <div className="absolute inset-0 rounded-full border-2 border-dashed border-[#00E5FF]/55 animate-radar-spin" />
+                    {/* Counter-Rotating Segmented Ring */}
+                    <div className="absolute inset-2.5 rounded-full border-2 border-t-[#167DFF] border-r-transparent border-b-[#00E5FF] border-l-transparent animate-radar-reverse shadow-[0_0_18px_rgba(0,229,255,0.4)]" />
                     {/* Radar Sweep Cone */}
                     <div
                       className="absolute inset-3 rounded-full animate-radar-spin opacity-65"
                       style={{
                         background:
-                          'conic-gradient(from 0deg, rgba(196,92,255,0.55) 0deg, rgba(160,32,240,0.12) 90deg, transparent 180deg, transparent 360deg)'
+                          'conic-gradient(from 0deg, rgba(0,229,255,0.5) 0deg, rgba(22,125,255,0.12) 90deg, transparent 180deg, transparent 360deg)'
                       }}
                     />
                     {/* Inner Target Core */}
-                    <div className="relative z-10 w-11 h-11 rounded-full bg-[#120B1E] border border-[#C45CFF]/70 flex items-center justify-center shadow-[0_0_16px_rgba(196,92,255,0.6)]">
-                      <div className="w-3 h-3 rounded-full bg-[#C45CFF] shadow-[0_0_10px_#C45CFF] animate-ping" />
+                    <div className="relative z-10 w-11 h-11 rounded-full bg-[#080D14] border border-[#00E5FF]/70 flex items-center justify-center shadow-[0_0_16px_rgba(0,229,255,0.55)]">
+                      <div className="w-3 h-3 rounded-full bg-[#00E5FF] shadow-[0_0_10px_#00E5FF] animate-ping" />
                     </div>
                   </div>
                 )}
 
-                {/* 5–8 SECONDS: ANIMATED PURPLE ENERGY WAVES & CONDUITS */}
+                {/* 5–8 SECONDS: ANIMATED CYAN ENERGY WAVES & CONDUITS */}
                 {connectStage === 3 && (
                   <div key="stage-3" className="w-full flex flex-col items-center justify-center gap-3.5 animate-stage-in">
                     {/* Equalizer Energy Wave Bars */}
@@ -325,20 +325,20 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
                           <div
                             key={idx}
                             style={{ animationDelay: `${delay}s` }}
-                            className="w-2 h-16 rounded-full bg-gradient-to-t from-[#6b21a8] via-[#A020F0] to-[#C45CFF] animate-energy-bar shadow-[0_0_12px_rgba(196,92,255,0.65)]"
+                            className="w-2 h-16 rounded-full bg-gradient-to-t from-[#167DFF] via-[#42BFFF] to-[#00E5FF] animate-energy-bar shadow-[0_0_12px_rgba(0,229,255,0.55)]"
                           />
                         )
                       )}
                     </div>
 
-                    {/* Flowing Horizontal Purple Energy Lines */}
+                    {/* Flowing Horizontal Cyan Energy Lines */}
                     <div className="w-full space-y-2 px-2">
-                      <div className="relative w-full h-[2px] bg-[#1D1230] overflow-hidden rounded-full">
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#C45CFF] to-transparent animate-energy-wave" />
+                      <div className="relative w-full h-[2px] bg-[#080D14] overflow-hidden rounded-full">
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#00E5FF] to-transparent animate-energy-wave" />
                       </div>
-                      <div className="relative w-4/5 mx-auto h-[2px] bg-[#1D1230] overflow-hidden rounded-full">
+                      <div className="relative w-4/5 mx-auto h-[2px] bg-[#080D14] overflow-hidden rounded-full">
                         <div
-                          className="absolute inset-0 bg-gradient-to-r from-transparent via-[#A020F0] to-transparent animate-energy-wave"
+                          className="absolute inset-0 bg-gradient-to-r from-transparent via-[#42BFFF] to-transparent animate-energy-wave"
                           style={{ animationDelay: '0.45s' }}
                         />
                       </div>
@@ -349,14 +349,14 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
                 {/* 8–11 SECONDS: FUTURISTIC CIRCULAR LOADING ANIMATION */}
                 {connectStage === 4 && (
                   <div key="stage-4" className="relative w-32 h-32 flex items-center justify-center animate-stage-in">
-                    <div className="absolute inset-0 rounded-full bg-[#A020F0]/20 blur-xl pointer-events-none" />
-                    <div className="absolute inset-0 rounded-full border border-[#C45CFF]/30 animate-radar-reverse" />
+                    <div className="absolute inset-0 rounded-full bg-[#00E5FF]/18 blur-xl pointer-events-none" />
+                    <div className="absolute inset-0 rounded-full border border-[#00E5FF]/30 animate-radar-reverse" />
                     <svg className="w-28 h-28 -rotate-90 transform" viewBox="0 0 112 112">
                       <circle
                         cx="56"
                         cy="56"
                         r={circleRadius}
-                        stroke="rgba(160, 32, 240, 0.2)"
+                        stroke="rgba(0, 229, 255, 0.18)"
                         strokeWidth="6"
                         fill="transparent"
                       />
@@ -364,7 +364,7 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
                         cx="56"
                         cy="56"
                         r={circleRadius}
-                        stroke="url(#revoxPurpleGrad)"
+                        stroke="url(#revoxCyanGrad)"
                         strokeWidth="6"
                         strokeDasharray={circleCircumference}
                         strokeDashoffset={circleDashOffset}
@@ -372,14 +372,14 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
                         fill="transparent"
                       />
                       <defs>
-                        <linearGradient id="revoxPurpleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                          <stop offset="0%" stopColor="#C45CFF" />
+                        <linearGradient id="revoxCyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor="#00E5FF" />
                           <stop offset="100%" stopColor="#00E5A4" />
                         </linearGradient>
                       </defs>
                     </svg>
                     <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <span className="text-[20px] font-mono-code font-black text-white tracking-wider drop-shadow-[0_0_10px_rgba(196,92,255,0.6)]">
+                      <span className="text-[20px] font-mono-code font-black text-[#F4F9FF] tracking-wider drop-shadow-[0_0_10px_rgba(0,229,255,0.55)]">
                         {roundedProgress}%
                       </span>
                     </div>
@@ -424,7 +424,7 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
                   className={`font-tech font-black text-[15px] sm:text-[16px] tracking-[0.2em] uppercase animate-stage-in ${
                     connectStage === 5
                       ? 'text-[#00E5A4] drop-shadow-[0_0_12px_rgba(0,229,164,0.5)]'
-                      : 'text-[#FFFFFF] drop-shadow-[0_0_12px_rgba(196,92,255,0.45)]'
+                      : 'text-[#F4F9FF] drop-shadow-[0_0_12px_rgba(0,229,255,0.45)]'
                   }`}
                 >
                   {stageTitle}
@@ -432,12 +432,12 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
 
                 {/* Smooth 0% to 100% Progress Bar */}
                 <div className="w-full space-y-1.5">
-                  <div className="relative w-full h-2 bg-[#160F24] border border-[#A020F0]/35 overflow-hidden rounded-full">
+                  <div className="relative w-full h-2 bg-[#080D14] border border-[#00E5FF]/35 overflow-hidden rounded-full">
                     <div
                       className={`h-full rounded-full transition-none relative ${
                         connectStage === 5
-                          ? 'bg-gradient-to-r from-[#A020F0] via-[#00E5A4] to-[#00E5A4] shadow-[0_0_14px_#00E5A4]'
-                          : 'bg-gradient-to-r from-[#7e22ce] via-[#A020F0] to-[#C45CFF] shadow-[0_0_14px_#A020F0]'
+                          ? 'bg-gradient-to-r from-[#00E5FF] via-[#00E5A4] to-[#00E5A4] shadow-[0_0_14px_#00E5A4]'
+                          : 'bg-gradient-to-r from-[#167DFF] via-[#42BFFF] to-[#00E5FF] shadow-[0_0_14px_#00E5FF]'
                       }`}
                       style={{ width: `${connectProgress}%` }}
                     >
@@ -446,9 +446,9 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
                   </div>
 
                   {/* Progress Footer Readout */}
-                  <div className="flex items-center justify-between text-[10px] font-mono-code font-bold tracking-[0.18em] text-[#9993A5] uppercase">
+                  <div className="flex items-center justify-between text-[10px] font-mono-code font-bold tracking-[0.18em] text-[#A5B4C7] uppercase">
                     <span>{ (settings?.panelName || settings?.websiteTitle || 'REVOX PANEL').trim() }</span>
-                    <span className={connectStage === 5 ? 'text-[#00E5A4]' : 'text-[#C45CFF]'}>
+                    <span className={connectStage === 5 ? 'text-[#00E5A4]' : 'text-[#00E5FF]'}>
                       {roundedProgress}%
                     </span>
                   </div>
@@ -462,14 +462,16 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
       {/* ========================================================
           1. PREMIUM ACTIVATION CARD (Stagger 1: Fades in)
           ======================================================== */}
-      <div className="animate-dash-1 relative p-[1px] bg-gradient-to-br from-[#C45CFF]/70 via-[#A020F0]/45 to-[#A020F0]/15 clip-card-br shadow-[0_10px_28px_-10px_rgba(160,32,240,0.35)]">
-        <div className="bg-[#100C18]/95 backdrop-blur-md p-3.5 clip-card-br relative overflow-hidden shadow-[inset_0_1px_18px_rgba(160,32,240,0.14)]">
-          
+      <div className="animate-dash-1 relative p-[1.2px] bg-gradient-to-br from-[#F4F9FF]/85 via-[#00E5FF]/80 to-[#167DFF]/45 clip-card-br shadow-[0_12px_34px_-8px_rgba(0,229,255,0.36)]">
+        <div className="cyber-glass-card backdrop-blur-xl p-3.5 clip-card-br relative overflow-hidden">
+          <span className="absolute top-0 left-5 right-5 h-[1.5px] bg-gradient-to-r from-transparent via-[#F4F9FF]/90 to-transparent shadow-[0_0_10px_#00E5FF] pointer-events-none" />
+          <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-[#00E5FF]/[0.04] to-white/[0.06] pointer-events-none" />
+
           {/* Subtle ambient glow in top-right */}
-          <div className="absolute -top-6 -right-6 w-28 h-28 bg-[radial-gradient(circle,rgba(196,92,255,0.18)_0%,transparent_70%)] pointer-events-none" />
+          <div className="absolute -top-6 -right-6 w-32 h-32 bg-[radial-gradient(circle,rgba(0,229,255,0.28)_0%,transparent_70%)] pointer-events-none" />
 
           {/* Top Row: Animated green status dot + ACCESS ACTIVATED + ACTIVE badge on right */}
-          <div className="flex items-center justify-between gap-2">
+          <div className="relative z-10 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <span className="relative flex h-2.5 w-2.5 shrink-0">
                 <span
@@ -481,11 +483,11 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
                   className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
                     isExpired
                       ? 'bg-red-500 shadow-[0_0_8px_#ef4444]'
-                      : 'bg-[#00E5A4] shadow-[0_0_8px_#00E5A4]'
+                      : 'bg-[#00E5A4] shadow-[0_0_10px_#00E5A4]'
                   }`}
                 />
               </span>
-              <span className="text-[#FFFFFF] text-[12px] sm:text-[13px] font-black tracking-[0.16em] uppercase font-tech truncate">
+              <span className="text-[#FFFFFF] text-[12px] sm:text-[13px] font-black tracking-[0.16em] uppercase font-tech truncate drop-shadow-[0_0_8px_rgba(0,229,255,0.4)]">
                 ACCESS ACTIVATED
               </span>
             </div>
@@ -494,7 +496,7 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
               className={`shrink-0 flex items-center px-2 py-0.5 border text-[10px] font-mono-code font-bold uppercase tracking-[0.14em] ${
                 isExpired
                   ? 'bg-red-500/10 border-red-500/40 text-red-400'
-                  : 'bg-[#00E5A4]/10 border-[#00E5A4]/35 text-[#00E5A4]'
+                  : 'bg-[#00E5A4]/15 border-[#00E5A4]/50 text-[#00E5A4] shadow-[0_0_10px_rgba(0,229,164,0.25)]'
               }`}
             >
               {isExpired ? 'EXPIRED' : 'ACTIVE'}
@@ -502,12 +504,12 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
           </div>
 
           {/* Thin subtle separator */}
-          <div className="w-full h-[1px] bg-gradient-to-r from-[#A020F0]/35 via-[#C45CFF]/20 to-transparent my-2.5" />
+          <div className="relative z-10 w-full h-[1px] bg-gradient-to-r from-[#00E5FF]/55 via-[#F4F9FF]/35 to-transparent my-2.5" />
 
           {/* Below: LICENSE KEY label + Dynamic Panel Name + Actual Activated Key + Premium Copy Icon */}
-          <div>
+          <div className="relative z-10">
             <div className="flex items-center justify-between text-[10px] font-mono-code font-bold tracking-[0.18em] uppercase mb-1.5">
-              <span className="text-[#a69bb8]">
+              <span className="text-[#A5B4C7]">
                 {(settings?.panelName || settings?.websiteTitle || 'REVOX PANEL').trim()} · LICENSE KEY
               </span>
               {copied && (
@@ -521,13 +523,13 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
               type="button"
               onClick={handleCopyKey}
               title="Copy license key"
-              className="w-full flex items-center justify-between gap-2 bg-[#07050B]/90 hover:bg-[#07050B] border border-[#A020F0]/45 hover:border-[#C45CFF] px-3 py-2 transition-all duration-200 cursor-pointer group active:scale-[0.99]"
+              className="w-full flex items-center justify-between gap-2 bg-gradient-to-b from-[#060A10] to-[#080D14] hover:from-[#080E16] hover:to-[#0C1420] border border-[#00E5FF]/55 hover:border-[#FFFFFF] px-3 py-2 transition-all duration-200 cursor-pointer group active:scale-[0.99] shadow-[inset_0_2px_10px_rgba(0,0,0,0.85),0_0_14px_rgba(0,229,255,0.18)]"
             >
-              <span className="text-[#FFFFFF] text-[13px] min-[375px]:text-[14px] sm:text-[15px] font-mono-code font-bold tracking-[0.08em] truncate">
+              <span className="text-[#FFFFFF] text-[13px] min-[375px]:text-[14px] sm:text-[15px] font-mono-code font-bold tracking-[0.08em] truncate drop-shadow-[0_0_8px_rgba(0,229,255,0.3)]">
                 {keyData.key}
               </span>
 
-              <span className="shrink-0 flex items-center justify-center w-6 h-6 bg-[#100C18] border border-[#A020F0]/40 group-hover:border-[#C45CFF] text-[#C45CFF] group-hover:text-[#FFFFFF] transition-colors">
+              <span className="shrink-0 flex items-center justify-center w-6 h-6 bg-[#101C2C] border border-[#00E5FF]/60 group-hover:border-[#FFFFFF] text-[#00E5FF] group-hover:text-[#FFFFFF] transition-colors shadow-[0_0_10px_rgba(0,229,255,0.28)]">
                 {copied ? (
                   <svg className="w-3.5 h-3.5 text-[#00E5A4]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="20 6 9 17 4 12" />
@@ -547,46 +549,48 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
       {/* ========================================================
           2. PREMIUM COUNTDOWN TIMER CARD (Stagger 2: Slides upward)
           ======================================================== */}
-      <div className="animate-dash-2 relative p-[1px] bg-gradient-to-br from-[#C45CFF]/60 via-[#A020F0]/40 to-[#A020F0]/15 clip-card-br shadow-[0_10px_28px_-10px_rgba(160,32,240,0.28)]">
-        <div className="bg-[#100C18]/95 backdrop-blur-md px-3.5 pt-3 pb-3 clip-card-br relative overflow-hidden shadow-[inset_0_1px_16px_rgba(160,32,240,0.12)]">
-          
-          <div className="text-[#a69bb8] text-[10px] font-mono-code font-bold tracking-[0.22em] uppercase text-center mb-1.5">
+      <div className="animate-dash-2 relative p-[1.2px] bg-gradient-to-br from-[#F4F9FF]/80 via-[#00E5FF]/70 to-[#167DFF]/35 clip-card-br shadow-[0_12px_32px_-8px_rgba(0,229,255,0.3)]">
+        <div className="cyber-glass-card backdrop-blur-xl px-3.5 pt-3 pb-3 clip-card-br relative overflow-hidden">
+          <span className="absolute top-0 left-5 right-5 h-[1.5px] bg-gradient-to-r from-transparent via-[#F4F9FF]/90 to-transparent shadow-[0_0_10px_#00E5FF] pointer-events-none" />
+          <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-[#00E5FF]/[0.04] to-white/[0.06] pointer-events-none" />
+
+          <div className="relative z-10 text-[#6EF2FF] text-[10px] font-mono-code font-bold tracking-[0.22em] uppercase text-center mb-1.5 drop-shadow-[0_0_8px_rgba(0,229,255,0.35)]">
             TIME REMAINING
           </div>
 
           {/* Single-row digital countdown readout */}
           {isExpired ? (
-            <div className="text-[19px] sm:text-[21px] font-black font-mono-code text-red-400 tracking-[0.16em] text-center py-0.5">
+            <div className="relative z-10 text-[19px] sm:text-[21px] font-black font-mono-code text-red-400 tracking-[0.16em] text-center py-0.5">
               00D : 00H : 00M : 00S
             </div>
           ) : isLifetime ? (
-            <div className="text-[17px] sm:text-[19px] font-black font-mono-code tracking-[0.14em] text-center py-0.5 flex items-center justify-center gap-2 whitespace-nowrap">
-              <span className="text-[#FFFFFF]">LIFETIME ACCESS</span>
-              <span className="text-[#C45CFF]">∞</span>
+            <div className="relative z-10 text-[17px] sm:text-[19px] font-black font-mono-code tracking-[0.14em] text-center py-0.5 flex items-center justify-center gap-2 whitespace-nowrap">
+              <span className="text-[#FFFFFF] drop-shadow-[0_0_8px_rgba(0,229,255,0.35)]">LIFETIME ACCESS</span>
+              <span className="text-[#00E5FF]">∞</span>
             </div>
           ) : timeLeft ? (
-            <div className="font-mono-code tabular-nums font-bold text-[18px] min-[360px]:text-[20px] sm:text-[22px] tracking-[0.06em] sm:tracking-[0.09em] py-0.5 flex items-center justify-center whitespace-nowrap">
-              <span className="text-[#FFFFFF]">{timeLeft.d}</span>
-              <span className="text-[#6e5d85] mx-1.5">:</span>
-              <span className="text-[#FFFFFF]">{timeLeft.h}</span>
-              <span className="text-[#6e5d85] mx-1.5">:</span>
-              <span className="text-[#FFFFFF]">{timeLeft.m}</span>
-              <span className="text-[#6e5d85] mx-1.5">:</span>
-              <span className="text-[#C45CFF] drop-shadow-[0_0_8px_rgba(196,92,255,0.45)]">{timeLeft.s}</span>
+            <div className="relative z-10 font-mono-code tabular-nums font-bold text-[18px] min-[360px]:text-[20px] sm:text-[22px] tracking-[0.06em] sm:tracking-[0.09em] py-0.5 flex items-center justify-center whitespace-nowrap">
+              <span className="text-[#FFFFFF] drop-shadow-[0_0_8px_rgba(0,229,255,0.3)]">{timeLeft.d}</span>
+              <span className="text-[#42BFFF] mx-1.5">:</span>
+              <span className="text-[#FFFFFF] drop-shadow-[0_0_8px_rgba(0,229,255,0.3)]">{timeLeft.h}</span>
+              <span className="text-[#42BFFF] mx-1.5">:</span>
+              <span className="text-[#FFFFFF] drop-shadow-[0_0_8px_rgba(0,229,255,0.3)]">{timeLeft.m}</span>
+              <span className="text-[#42BFFF] mx-1.5">:</span>
+              <span className="text-[#00E5FF] drop-shadow-[0_0_12px_rgba(0,229,255,0.65)]">{timeLeft.s}</span>
             </div>
           ) : (
-            <div className="text-xs font-mono-code text-[#a69bb8] text-center py-1">
+            <div className="relative z-10 text-xs font-mono-code text-[#A5B4C7] text-center py-1">
               SYNCING...
             </div>
           )}
 
           {/* Thin animated progress line showing remaining license validity */}
-          <div className="relative w-full h-[3px] bg-[#07050B] overflow-hidden mt-2.5 border border-[#A020F0]/25">
+          <div className="relative z-10 w-full h-[3.5px] bg-[#060A10] overflow-hidden mt-2.5 border border-[#00E5FF]/40 rounded-full">
             <div
-              className="h-full bg-gradient-to-r from-[#A020F0] via-[#C45CFF] to-[#00E5A4] transition-all duration-700 ease-out relative"
+              className="h-full bg-gradient-to-r from-[#167DFF] via-[#00E5FF] to-[#00E5A4] transition-all duration-700 ease-out relative shadow-[0_0_12px_#00E5FF]"
               style={{ width: `${isExpired ? 0 : validityPercent}%` }}
             >
-              <span className="absolute inset-0 w-1/2 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-sheen" />
+              <span className="absolute inset-0 w-1/2 bg-gradient-to-r from-transparent via-white/55 to-transparent animate-sheen" />
             </div>
           </div>
         </div>
@@ -603,25 +607,27 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
           disabled={isExpired || connecting}
           className={`relative w-full py-3.5 px-5 clip-btn-angular font-tech font-black text-[18px] sm:text-[20px] tracking-[0.14em] uppercase transition-all duration-200 cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden group ${
             connected
-              ? 'bg-gradient-to-r from-[#00b884] via-[#00E5A4] to-[#009e70] text-[#07050B] shadow-[0_6px_24px_-4px_rgba(0,229,164,0.45)] border-t border-white/30'
-              : 'bg-gradient-to-r from-[#A020F0] via-[#b43df7] to-[#C45CFF] text-[#FFFFFF] shadow-[0_6px_26px_-4px_rgba(160,32,240,0.55)] border-t border-white/25 hover:brightness-110'
+              ? 'bg-gradient-to-r from-[#00b884] via-[#00E5A4] to-[#009e70] text-[#05070B] shadow-[0_6px_26px_-4px_rgba(0,229,164,0.55),inset_0_1.5px_1px_rgba(255,255,255,0.75)] border-t border-white/75'
+              : 'cyber-primary-btn text-[#05070B] border-t border-white/85 hover:brightness-110'
           }`}
         >
-          {/* Subtle animated shine */}
-          <span className="absolute inset-0 w-1/3 bg-gradient-to-r from-transparent via-white/20 to-transparent pointer-events-none animate-sheen" />
+          {/* Top-Half Glossy Mirror Reflection */}
+          <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/35 to-transparent pointer-events-none" />
+          {/* Continuous Diagonal Mirror Sheen */}
+          <span className="absolute inset-0 w-1/3 bg-gradient-to-r from-transparent via-white/55 to-transparent pointer-events-none animate-sheen" />
 
           {/* Premium icon */}
           {connected ? (
-            <svg className="w-5 h-5 shrink-0 text-[#07050B]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
+            <svg className="relative z-10 w-5 h-5 shrink-0 text-[#05070B]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="20 6 9 17 4 12" />
             </svg>
           ) : (
-            <svg className="w-5 h-5 shrink-0 text-[#FFFFFF] transition-transform duration-200 group-hover:scale-110" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <svg className="relative z-10 w-5 h-5 shrink-0 text-[#05070B] transition-transform duration-200 group-hover:scale-110" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
             </svg>
           )}
 
-          <span className="relative z-10 whitespace-nowrap">
+          <span className="relative z-10 whitespace-nowrap drop-shadow-[0_1px_1px_rgba(255,255,255,0.45)]">
             {connected ? 'CONNECT SUCCESSFUL' : 'CONNECT HACK'}
           </span>
         </button>
@@ -632,14 +638,15 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
           ======================================================== */}
       <div className="animate-dash-4 grid grid-cols-2 gap-2.5">
         {/* DOWNLOAD PANEL */}
-        <div className="p-[1px] bg-gradient-to-b from-[#C45CFF]/65 to-[#A020F0]/30 hover:from-[#C45CFF] hover:to-[#A020F0] clip-btn-angular transition-all duration-200">
+        <div className="p-[1.2px] bg-gradient-to-b from-[#FFFFFF]/85 via-[#00E5FF]/80 to-[#167DFF]/45 hover:from-[#FFFFFF] hover:to-[#00E5FF] clip-btn-angular transition-all duration-200 shadow-[0_8px_24px_-6px_rgba(0,229,255,0.34)]">
           <button
             type="button"
             onClick={() => handleOpenExternalUrl(settings?.downloadHackUrl, 'https://t.me/silentx_phantom_official')}
-            className="relative w-full h-full bg-[#100C18] hover:bg-[#171124] active:scale-[0.98] py-3 px-2 sm:px-2.5 clip-btn-angular flex items-center justify-center gap-1.5 cursor-pointer transition-all group overflow-hidden"
+            className="relative w-full h-full bg-gradient-to-b from-[#111F31] via-[#0B1420] to-[#070C14] hover:from-[#16283E] hover:to-[#0A1320] active:scale-[0.98] py-3 px-2 sm:px-2.5 clip-btn-angular flex items-center justify-center gap-1.5 cursor-pointer transition-all group overflow-hidden shadow-[inset_0_1px_1px_rgba(255,255,255,0.38),inset_0_0_14px_rgba(0,229,255,0.12)]"
           >
+            <span className="absolute top-0 left-3 right-3 h-[1px] bg-gradient-to-r from-transparent via-white/80 to-transparent pointer-events-none" />
             <svg
-              className="w-3.5 h-3.5 min-[360px]:w-4 min-[360px]:h-4 text-[#C45CFF] group-hover:text-[#FFFFFF] shrink-0 transition-colors"
+              className="w-3.5 h-3.5 min-[360px]:w-4 min-[360px]:h-4 text-[#00E5FF] group-hover:text-[#FFFFFF] shrink-0 transition-colors drop-shadow-[0_0_6px_rgba(0,229,255,0.75)]"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -651,27 +658,28 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            <span className="text-[#FFFFFF] text-[10.5px] min-[360px]:text-[11.5px] min-[390px]:text-[12px] sm:text-[12.5px] font-black tracking-[0.05em] min-[390px]:tracking-[0.07em] uppercase font-tech whitespace-nowrap">
+            <span className="text-[#FFFFFF] text-[10.5px] min-[360px]:text-[11.5px] min-[390px]:text-[12px] sm:text-[12.5px] font-black tracking-[0.05em] min-[390px]:tracking-[0.07em] uppercase font-tech whitespace-nowrap drop-shadow-[0_0_8px_rgba(0,229,255,0.4)]">
               DOWNLOAD PANEL
             </span>
           </button>
         </div>
 
         {/* SETUP VIDEO */}
-        <div className="p-[1px] bg-gradient-to-b from-[#C45CFF]/65 to-[#A020F0]/30 hover:from-[#C45CFF] hover:to-[#A020F0] clip-btn-angular transition-all duration-200">
+        <div className="p-[1.2px] bg-gradient-to-b from-[#FFFFFF]/85 via-[#00E5FF]/80 to-[#167DFF]/45 hover:from-[#FFFFFF] hover:to-[#00E5FF] clip-btn-angular transition-all duration-200 shadow-[0_8px_24px_-6px_rgba(0,229,255,0.34)]">
           <button
             type="button"
             onClick={() => handleOpenExternalUrl(settings?.setupVideoUrl, 'https://www.youtube.com/')}
-            className="relative w-full h-full bg-[#100C18] hover:bg-[#171124] active:scale-[0.98] py-3 px-2 sm:px-2.5 clip-btn-angular flex items-center justify-center gap-1.5 cursor-pointer transition-all group overflow-hidden"
+            className="relative w-full h-full bg-gradient-to-b from-[#111F31] via-[#0B1420] to-[#070C14] hover:from-[#16283E] hover:to-[#0A1320] active:scale-[0.98] py-3 px-2 sm:px-2.5 clip-btn-angular flex items-center justify-center gap-1.5 cursor-pointer transition-all group overflow-hidden shadow-[inset_0_1px_1px_rgba(255,255,255,0.38),inset_0_0_14px_rgba(0,229,255,0.12)]"
           >
+            <span className="absolute top-0 left-3 right-3 h-[1px] bg-gradient-to-r from-transparent via-white/80 to-transparent pointer-events-none" />
             <svg
-              className="w-3.5 h-3.5 min-[360px]:w-4 min-[360px]:h-4 text-[#C45CFF] group-hover:text-[#FFFFFF] shrink-0 transition-colors"
+              className="w-3.5 h-3.5 min-[360px]:w-4 min-[360px]:h-4 text-[#00E5FF] group-hover:text-[#FFFFFF] shrink-0 transition-colors drop-shadow-[0_0_6px_rgba(0,229,255,0.75)]"
               viewBox="0 0 24 24"
               fill="currentColor"
             >
               <polygon points="5 3 19 12 5 21 5 3" />
             </svg>
-            <span className="text-[#FFFFFF] text-[10.5px] min-[360px]:text-[11.5px] min-[390px]:text-[12px] sm:text-[12.5px] font-black tracking-[0.05em] min-[390px]:tracking-[0.07em] uppercase font-tech whitespace-nowrap">
+            <span className="text-[#FFFFFF] text-[10.5px] min-[360px]:text-[11.5px] min-[390px]:text-[12px] sm:text-[12.5px] font-black tracking-[0.05em] min-[390px]:tracking-[0.07em] uppercase font-tech whitespace-nowrap drop-shadow-[0_0_8px_rgba(0,229,255,0.4)]">
               SETUP VIDEO
             </span>
           </button>
@@ -693,7 +701,7 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
                 onDisconnect();
               }
             }}
-            className="text-[11px] font-mono-code font-bold tracking-[0.22em] uppercase text-[#a69bb8] hover:text-[#C45CFF] underline underline-offset-4 decoration-[#A020F0]/50 hover:decoration-[#C45CFF] transition-colors duration-200 cursor-pointer select-none"
+            className="text-[11px] font-mono-code font-bold tracking-[0.22em] uppercase text-[#A5B4C7] hover:text-[#00E5FF] underline underline-offset-4 decoration-[#00E5FF]/50 hover:decoration-[#00E5FF] transition-colors duration-200 cursor-pointer select-none"
           >
             LOGOUT
           </span>

@@ -589,7 +589,7 @@ function normalizeSettings(raw: Partial<SiteSettings>): SiteSettings {
     introFeaturePoints: featurePoints,
     whatsappNumber: raw.whatsappNumber || whatsappUrl,
     whatsappUrl,
-    themeColor: raw.themeColor || '#A020F0',
+    themeColor: (raw.themeColor && raw.themeColor !== '#A020F0') ? raw.themeColor : '#00E5FF',
     buttonSettings: {
       downloadHackUrl,
       setupVideoUrl,

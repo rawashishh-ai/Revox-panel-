@@ -194,32 +194,32 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/90 backdrop-blur-md animate-fade-in select-none">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-[#05070B]/92 backdrop-blur-md animate-fade-in select-none">
       
       {/* Outer Glow Vignette */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(160,32,240,0.22)_0%,transparent_75%)] pointer-events-none" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(0,229,255,0.18)_0%,transparent_75%)] pointer-events-none" />
       <div className="absolute inset-0 scanlines-overlay opacity-60 pointer-events-none" />
 
       {/* Main Container */}
-      <div className="relative w-full max-w-[390px] p-[1px] bg-gradient-to-b from-[#a855f7] via-[#9333ea] to-[#581c87] clip-announcement shadow-[0_0_50px_rgba(168,85,247,0.5)]">
-        <div className="relative bg-[#0d0d12] clip-announcement p-4 sm:p-5 text-white flex flex-col justify-between overflow-hidden">
+      <div className="relative w-full max-w-[390px] p-[1px] bg-gradient-to-b from-[#00E5FF] via-[#42BFFF] to-[#167DFF]/60 clip-announcement shadow-[0_0_45px_rgba(0,229,255,0.38)]">
+        <div className="relative bg-[#0D1520] clip-announcement p-4 sm:p-5 text-[#F4F9FF] flex flex-col justify-between overflow-hidden">
           
           {/* Close button */}
           <button
             type="button"
             onClick={onClose}
-            className="absolute top-3 right-3 text-[#a1a1aa] hover:text-white bg-[#181822] hover:bg-[#252533] border border-[#3b2159] w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs transition-colors cursor-pointer z-20"
+            className="absolute top-3 right-3 text-[#A5B4C7] hover:text-[#F4F9FF] bg-[#0A1018] hover:bg-[#111D2C] border border-[#00E5FF]/35 w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs transition-colors cursor-pointer z-20"
           >
             ✕
           </button>
 
           {/* PAGE HEADER */}
           <div className="text-center mb-4">
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#3b154d] border border-[#a855f7]/50 text-[#c084fc] text-[9.5px] font-mono-code font-bold uppercase tracking-widest mb-1.5 shadow-sm">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#a855f7] animate-pulse" />
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#0A1828] border border-[#00E5FF]/50 text-[#00E5FF] text-[9.5px] font-mono-code font-bold uppercase tracking-widest mb-1.5 shadow-sm">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#00E5FF] animate-pulse" />
               ONE-TIME ACCESS KEY
             </div>
-            <h2 className="text-xl sm:text-2xl font-black font-tech tracking-wider uppercase text-white drop-shadow-[0_2px_8px_rgba(168,85,247,0.4)]">
+            <h2 className="text-xl sm:text-2xl font-black font-tech tracking-wider uppercase text-[#F4F9FF] drop-shadow-[0_2px_8px_rgba(0,229,255,0.35)]">
               GET YOUR ACCESS KEY
             </h2>
           </div>
@@ -229,32 +229,32 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
             <div className="space-y-4">
               
               {/* Blurred Key Preview Card */}
-              <div className="relative p-[1px] bg-gradient-to-b from-[#581c87] to-[#2e1065] clip-announcement shadow-lg">
-                <div className="bg-[#101014] clip-announcement p-3.5 text-center relative overflow-hidden">
+              <div className="relative p-[1px] bg-gradient-to-b from-[#00E5FF]/55 to-[#167DFF]/30 clip-announcement shadow-lg">
+                <div className="bg-[#0A1018] clip-announcement p-3.5 text-center relative overflow-hidden">
                   
-                  <div className="text-[#a1a1aa] text-[9.5px] font-bold tracking-[0.2em] uppercase font-mono-code mb-1">
+                  <div className="text-[#A5B4C7] text-[9.5px] font-bold tracking-[0.2em] uppercase font-mono-code mb-1">
                     ACCESS KEY
                   </div>
 
-                  {/* Blurred placeholder text (REAL KEY IS NEVER SENT TO FRONTEND BEFORE PAYMENT) */}
-                  <div className="relative py-2 px-3 bg-[#050505] border border-[#4c1d95] rounded overflow-hidden flex items-center justify-center">
-                    <span className="text-lg font-mono-code font-bold tracking-widest text-[#c084fc] blur-[5px] select-none pointer-events-none opacity-60">
+                  {/* Blurred placeholder text */}
+                  <div className="relative py-2 px-3 bg-[#080D14] border border-[#00E5FF]/35 rounded overflow-hidden flex items-center justify-center">
+                    <span className="text-lg font-mono-code font-bold tracking-widest text-[#42BFFF] blur-[5px] select-none pointer-events-none opacity-60">
                       RVX-VIP9-4920-PHAN
                     </span>
 
                     {/* Lock Overlay */}
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/55 backdrop-blur-[2px]">
-                      <span className="text-xs font-mono-code font-bold text-white bg-[#581c87]/90 border border-[#a855f7] px-2.5 py-1 rounded shadow-md flex items-center gap-1.5 tracking-wider">
+                    <div className="absolute inset-0 flex items-center justify-center bg-[#05070B]/60 backdrop-blur-[2px]">
+                      <span className="text-xs font-mono-code font-bold text-[#F4F9FF] bg-[#0D1A2B]/90 border border-[#00E5FF]/70 px-2.5 py-1 rounded shadow-md flex items-center gap-1.5 tracking-wider">
                         <span>🔒</span>
                         <span>LOCKED KEY</span>
                       </span>
                     </div>
                   </div>
 
-                  <p className="text-[11px] text-[#a1a1aa] font-sans mt-2">
-                    Instant online key delivery for <strong className="text-white">₹{price}</strong>.
+                  <p className="text-[11px] text-[#A5B4C7] font-sans mt-2">
+                    Instant online key delivery for <strong className="text-[#F4F9FF]">₹{price}</strong>.
                   </p>
-                  <div className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#3b1261]/60 border border-[#a855f7]/40 text-[#c084fc] text-[9.5px] font-mono-code font-bold">
+                  <div className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#0A1828]/75 border border-[#00E5FF]/40 text-[#42BFFF] text-[9.5px] font-mono-code font-bold">
                     <span>🔒</span>
                     <span>STRICT 1-DEVICE LOCK (Single device license)</span>
                   </div>
@@ -263,16 +263,16 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
 
               {/* Price & Customer Form */}
               <form onSubmit={handleCreateOrder} className="space-y-3">
-                <div className="bg-[#121218] border border-[#2d1b42] p-3 rounded space-y-2">
-                  <div className="flex items-center justify-between text-xs font-mono-code border-b border-[#251538] pb-1.5">
-                    <span className="text-[#a1a1aa] uppercase tracking-wider">AMOUNT DUE:</span>
+                <div className="bg-[#0A1018] border border-[#00E5FF]/25 p-3 rounded space-y-2">
+                  <div className="flex items-center justify-between text-xs font-mono-code border-b border-[#00E5FF]/15 pb-1.5">
+                    <span className="text-[#A5B4C7] uppercase tracking-wider">AMOUNT DUE:</span>
                     <span className="text-lg font-bold font-tech text-[#00D9A0] drop-shadow-[0_0_8px_rgba(0,217,160,0.5)]">
                       ₹{price} INR
                     </span>
                   </div>
 
                   <div>
-                    <label className="text-[10px] text-[#8e8e96] font-mono-code uppercase block mb-1">
+                    <label className="text-[10px] text-[#A5B4C7] font-mono-code uppercase block mb-1">
                       Your Name / Contact (Optional)
                     </label>
                     <input
@@ -280,7 +280,7 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
                       value={customerName}
                       onChange={(e) => setCustomerName(e.target.value)}
                       placeholder="e.g. Rahul / Telegram ID"
-                      className="w-full bg-[#08080c] border border-[#3b1c63] focus:border-[#a855f7] px-3 py-1.5 rounded text-xs text-white outline-none font-mono-code"
+                      className="w-full bg-[#080D14] border border-[#00E5FF]/30 focus:border-[#00E5FF] px-3 py-1.5 rounded text-xs text-[#F4F9FF] outline-none font-mono-code"
                     />
                   </div>
                 </div>
@@ -295,9 +295,9 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
                 <button
                   type="submit"
                   disabled={loading}
-                  className="relative w-full bg-gradient-to-r from-[#9333ea] via-[#a855f7] to-[#6b21a8] hover:brightness-110 active:scale-[0.985] text-white py-3 px-4 clip-unlock-btn font-tech font-black text-base sm:text-lg tracking-[0.12em] uppercase transition-all cursor-pointer violet-btn-glow flex items-center justify-center gap-2 shadow-[0_4px_25px_rgba(168,85,247,0.5)] border-t border-white/20 disabled:opacity-50"
+                  className="relative w-full bg-gradient-to-r from-[#00E5FF] via-[#42BFFF] to-[#167DFF] hover:brightness-110 active:scale-[0.985] text-[#05070B] py-3 px-4 clip-unlock-btn font-tech font-black text-base sm:text-lg tracking-[0.12em] uppercase transition-all cursor-pointer violet-btn-glow flex items-center justify-center gap-2 border-t border-white/35 disabled:opacity-50"
                 >
-                  <span className="absolute inset-0 w-1/3 bg-gradient-to-r from-transparent via-white/20 to-transparent pointer-events-none animate-sheen" />
+                  <span className="absolute inset-0 w-1/3 bg-gradient-to-r from-transparent via-white/30 to-transparent pointer-events-none animate-sheen" />
                   <span>🔓 UNLOCK KEY — ₹{price}</span>
                 </button>
               </form>
@@ -307,7 +307,7 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setStep('retrieve')}
-                  className="text-[10.5px] text-[#a1a1aa] hover:text-[#c084fc] font-mono-code underline cursor-pointer transition-colors"
+                  className="text-[10.5px] text-[#A5B4C7] hover:text-[#00E5FF] font-mono-code underline cursor-pointer transition-colors"
                 >
                   Already paid? Retrieve key with Order ID →
                 </button>
@@ -320,21 +320,21 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
           {step === 'payment_pending' && activeOrder && (
             <div className="space-y-4 text-center">
               
-              <div className="p-4 bg-[#121218] border border-[#a855f7]/50 rounded space-y-3">
-                <div className="w-12 h-12 mx-auto rounded-full bg-[#3b154d] border border-[#a855f7] flex items-center justify-center text-xl animate-pulse shadow-[0_0_15px_#a855f7]">
+              <div className="p-4 bg-[#0A1018] border border-[#00E5FF]/45 rounded space-y-3">
+                <div className="w-12 h-12 mx-auto rounded-full bg-[#0A1828] border border-[#00E5FF] flex items-center justify-center text-xl animate-pulse shadow-[0_0_15px_#00E5FF]">
                   💳
                 </div>
 
                 <div>
-                  <div className="text-xs font-tech font-bold uppercase tracking-wider text-white">
+                  <div className="text-xs font-tech font-bold uppercase tracking-wider text-[#F4F9FF]">
                     TranzUPI Checkout Launched
                   </div>
-                  <div className="text-[11px] text-[#c084fc] font-mono-code font-bold mt-0.5">
+                  <div className="text-[11px] text-[#00E5FF] font-mono-code font-bold mt-0.5">
                     Order ID: {activeOrder.orderId}
                   </div>
                 </div>
 
-                <p className="text-[11px] text-[#a1a1aa] leading-relaxed">
+                <p className="text-[11px] text-[#A5B4C7] leading-relaxed">
                   Complete the ₹{price} payment via UPI. Your 1-device locked access key will generate automatically!
                 </p>
 
@@ -344,7 +344,7 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
                     onClick={() => {
                       window.location.href = activeOrder.upiIntentUrl!;
                     }}
-                    className="w-full bg-gradient-to-r from-[#9333ea] to-[#7e22ce] hover:brightness-110 active:scale-[0.985] text-white py-2.5 px-3 rounded font-tech font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(168,85,247,0.4)]"
+                    className="w-full bg-gradient-to-r from-[#00E5FF] to-[#167DFF] hover:brightness-110 active:scale-[0.985] text-[#05070B] py-2.5 px-3 rounded font-tech font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(0,229,255,0.35)]"
                   >
                     <span>📱</span>
                     <span>Pay with UPI (GPay / PhonePe / Paytm)</span>
@@ -355,7 +355,7 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
                   <button
                     type="button"
                     onClick={() => window.open(activeOrder.paymentUrl, '_blank')}
-                    className="w-full bg-[#1f1430] hover:bg-[#2d1b48] border border-[#a855f7] text-[#c084fc] hover:text-white py-2 px-3 rounded font-tech font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                    className="w-full bg-[#0D1A2B] hover:bg-[#12263F] border border-[#00E5FF]/60 text-[#42BFFF] hover:text-[#F4F9FF] py-2 px-3 rounded font-tech font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                   >
                     <span>↗ Open Payment Gateway</span>
                   </button>
@@ -371,13 +371,13 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
                         loading="lazy"
                       />
                     </div>
-                    <span className="text-[9.5px] text-[#a1a1aa] font-mono-code mt-1 font-semibold">
+                    <span className="text-[9.5px] text-[#A5B4C7] font-mono-code mt-1 font-semibold">
                       Scan QR code with any UPI app
                     </span>
                   </div>
                 )}
 
-                <div className="pt-2 border-t border-[#251538] flex items-center justify-center gap-2">
+                <div className="pt-2 border-t border-[#00E5FF]/15 flex items-center justify-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-[#00D9A0] animate-ping" />
                   <span className="text-[10.5px] font-mono-code text-[#00D9A0] font-bold">
                     Awaiting server verification...
@@ -396,7 +396,7 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
                   type="button"
                   onClick={handleVerifyNow}
                   disabled={loading}
-                  className="w-full bg-[#9333ea] hover:bg-[#a855f7] text-white py-2.5 px-4 rounded font-tech font-bold text-xs uppercase tracking-wider cursor-pointer shadow-md transition-colors"
+                  className="w-full bg-gradient-to-r from-[#00E5FF] to-[#167DFF] hover:brightness-110 text-[#05070B] py-2.5 px-4 rounded font-tech font-black text-xs uppercase tracking-wider cursor-pointer shadow-md transition-all"
                 >
                   {loading ? 'Checking Gateway...' : '🔄 Verify Payment Status Now'}
                 </button>
@@ -404,7 +404,7 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setStep('checkout')}
-                  className="text-[10.5px] text-[#71717a] hover:text-white font-mono-code block mx-auto underline cursor-pointer"
+                  className="text-[10.5px] text-[#A5B4C7] hover:text-[#F4F9FF] font-mono-code block mx-auto underline cursor-pointer"
                 >
                   ← Change details / cancel
                 </button>
@@ -417,10 +417,10 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
           {step === 'revealing' && (
             <div className="py-6 text-center space-y-4">
               
-              {/* Glowing Purple Circle */}
+              {/* Glowing Cyan Circle */}
               <div className="relative w-20 h-20 mx-auto flex items-center justify-center">
-                <div className="absolute inset-0 rounded-full bg-[#a855f7]/30 animate-pulse-expand" />
-                <div className="w-16 h-16 rounded-full bg-[#180e29] border-2 border-[#a855f7] flex items-center justify-center text-2xl shadow-[0_0_25px_#a855f7]">
+                <div className="absolute inset-0 rounded-full bg-[#00E5FF]/30 animate-pulse-expand" />
+                <div className="w-16 h-16 rounded-full bg-[#0A1828] border-2 border-[#00E5FF] flex items-center justify-center text-2xl shadow-[0_0_25px_#00E5FF]">
                   {revealStage === 1 ? '✓' : revealStage === 2 ? '🔓' : '✨'}
                 </div>
               </div>
@@ -429,14 +429,14 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
                 <div className="text-sm font-black font-tech uppercase tracking-widest text-[#00D9A0] drop-shadow-[0_0_10px_#00D9A0]">
                   {revealStage === 1 ? 'PAYMENT VERIFIED' : revealStage === 2 ? 'UNLOCKING LICENSE...' : 'KEY UNLOCKED'}
                 </div>
-                <div className="text-[11px] font-mono-code text-[#a1a1aa]">
+                <div className="text-[11px] font-mono-code text-[#A5B4C7]">
                   CRYPTOGRAPHIC KEY GENERATED
                 </div>
               </div>
 
               {/* Gradually unblur key preview */}
-              <div className="p-3 bg-[#050505] border border-[#00D9A0] rounded text-center transition-all duration-700">
-                <span className={`text-lg font-mono-code font-bold tracking-widest text-white transition-all duration-700 ${
+              <div className="p-3 bg-[#080D14] border border-[#00D9A0] rounded text-center transition-all duration-700">
+                <span className={`text-lg font-mono-code font-bold tracking-widest text-[#F4F9FF] transition-all duration-700 ${
                   revealStage >= 3 ? 'blur-0 opacity-100 drop-shadow-[0_0_10px_#00D9A0]' : 'blur-[8px] opacity-40'
                 }`}>
                   {revealedKey || 'RVX-XXXX-XXXX-XXXX'}
@@ -456,11 +456,11 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
                 </div>
 
                 <div>
-                  <div className="text-[10px] text-[#a1a1aa] font-mono-code font-bold uppercase tracking-widest mb-1">
+                  <div className="text-[10px] text-[#A5B4C7] font-mono-code font-bold uppercase tracking-widest mb-1">
                     YOUR PURCHASES ACCESS KEY:
                   </div>
 
-                  <div className="flex items-center justify-between bg-[#050505] border border-[#00D9A0] px-3 py-2 rounded">
+                  <div className="flex items-center justify-between bg-[#080D14] border border-[#00D9A0] px-3 py-2 rounded">
                     <span className="text-base sm:text-lg font-mono-code font-bold text-[#00D9A0] tracking-wider truncate drop-shadow-[0_0_8px_#00D9A0]">
                       {revealedKey}
                     </span>
@@ -474,7 +474,7 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
                   </div>
                 </div>
 
-                <p className="text-[10.5px] text-[#a1a1aa] font-sans">
+                <p className="text-[10.5px] text-[#A5B4C7] font-sans">
                   This key is unique to your purchase. Save it safely!
                 </p>
                 <div className="mt-1 inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#064e3b]/60 border border-[#00D9A0]/50 text-[#a7f3d0] text-[10px] font-mono-code font-bold">
@@ -487,7 +487,7 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
                 <button
                   type="button"
                   onClick={handleUseKey}
-                  className="w-full bg-gradient-to-r from-[#00D9A0] to-[#059669] hover:brightness-110 text-black font-tech font-black text-sm py-3 px-4 rounded tracking-wider uppercase cursor-pointer transition-transform active:scale-[0.98] shadow-lg shadow-[#00D9A0]/30"
+                  className="w-full bg-gradient-to-r from-[#00D9A0] to-[#059669] hover:brightness-110 text-[#05070B] font-tech font-black text-sm py-3 px-4 rounded tracking-wider uppercase cursor-pointer transition-transform active:scale-[0.98] shadow-lg shadow-[#00D9A0]/30"
                 >
                   🚀 ACTIVATE KEY NOW
                 </button>
@@ -495,7 +495,7 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="text-xs text-[#8e8e96] hover:text-white font-mono-code block mx-auto cursor-pointer"
+                  className="text-xs text-[#A5B4C7] hover:text-[#F4F9FF] font-mono-code block mx-auto cursor-pointer"
                 >
                   Done
                 </button>
@@ -508,10 +508,10 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
           {step === 'retrieve' && (
             <form onSubmit={handleRetrieveKey} className="space-y-3">
               <div>
-                <h3 className="text-xs font-tech font-bold uppercase text-white tracking-wider mb-1">
+                <h3 className="text-xs font-tech font-bold uppercase text-[#F4F9FF] tracking-wider mb-1">
                   Retrieve Purchased Access Key
                 </h3>
-                <p className="text-[11px] text-[#8e8e96] font-mono-code">
+                <p className="text-[11px] text-[#A5B4C7] font-mono-code">
                   Enter the Order ID from your payment receipt to retrieve your unlocked key.
                 </p>
               </div>
@@ -522,7 +522,7 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
                   value={retrieveOrderId}
                   onChange={(e) => setRetrieveOrderId(e.target.value.toUpperCase())}
                   placeholder="e.g. ORD_172967123_A1B2"
-                  className="w-full bg-[#121218] border border-[#3b1c63] focus:border-[#a855f7] px-3 py-2 rounded text-xs text-white font-mono-code outline-none uppercase"
+                  className="w-full bg-[#080D14] border border-[#00E5FF]/35 focus:border-[#00E5FF] px-3 py-2 rounded text-xs text-[#F4F9FF] font-mono-code outline-none uppercase"
                 />
               </div>
 
@@ -535,7 +535,7 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-[#9333ea] hover:bg-[#a855f7] text-white text-xs font-tech font-bold uppercase py-2.5 px-4 rounded cursor-pointer transition-colors shadow-md"
+                className="w-full bg-gradient-to-r from-[#00E5FF] to-[#167DFF] hover:brightness-110 text-[#05070B] text-xs font-tech font-black uppercase py-2.5 px-4 rounded cursor-pointer transition-all shadow-md"
               >
                 {loading ? 'Searching...' : '🔍 Retrieve Key'}
               </button>
@@ -543,7 +543,7 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
               <button
                 type="button"
                 onClick={() => setStep('checkout')}
-                className="text-[10.5px] text-[#71717a] hover:text-white font-mono-code block mx-auto underline cursor-pointer"
+                className="text-[10.5px] text-[#A5B4C7] hover:text-[#F4F9FF] font-mono-code block mx-auto underline cursor-pointer"
               >
                 ← Back to purchase page
               </button>

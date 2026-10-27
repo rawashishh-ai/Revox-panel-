@@ -40,7 +40,7 @@ export const VerificationOverlay: React.FC<VerificationOverlayProps> = ({
   if (state === 'idle') return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/92 backdrop-blur-md animate-fade-in select-none">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#05070B]/92 backdrop-blur-md animate-fade-in select-none">
       
       {/* Background ambient lighting */}
       <div 
@@ -49,7 +49,7 @@ export const VerificationOverlay: React.FC<VerificationOverlayProps> = ({
             ? 'opacity-40 bg-[radial-gradient(circle_at_50%_50%,rgba(0,217,160,0.18)_0%,transparent_65%)]' 
             : stage === 'error'
               ? 'opacity-40 bg-[radial-gradient(circle_at_50%_50%,rgba(229,9,20,0.22)_0%,transparent_65%)]'
-              : 'opacity-35 bg-[radial-gradient(circle_at_50%_50%,rgba(168,85,247,0.22)_0%,transparent_65%)]'
+              : 'opacity-40 bg-[radial-gradient(circle_at_50%_50%,rgba(0,229,255,0.20)_0%,transparent_65%)]'
         }`}
       />
 
@@ -63,39 +63,39 @@ export const VerificationOverlay: React.FC<VerificationOverlayProps> = ({
             ? 'bg-[#00D9A0]/60' 
             : stage === 'error'
               ? 'bg-[#E50914]'
-              : 'bg-[#581c87]'
+              : 'bg-[#00E5FF]/50'
         } clip-announcement shadow-[0_0_50px_-10px_rgba(0,0,0,0.9)] transition-colors duration-500`}
       >
-        <div className="relative bg-[#0c0c0e] clip-announcement p-6 sm:p-7 flex flex-col items-center justify-center text-center overflow-hidden min-h-[220px]">
+        <div className="relative bg-[#0D1520] clip-announcement p-6 sm:p-7 flex flex-col items-center justify-center text-center overflow-hidden min-h-[220px]">
           
-          {/* Subtle Scanning Laser Line in Electric Violet (Active while verifying) */}
+          {/* Subtle Scanning Laser Line in Electric Cyan (Active while verifying) */}
           {stage === 'scan' && (
-            <div className="absolute inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-[#a855f7] to-transparent animate-laser shadow-[0_0_14px_#a855f7] pointer-events-none" />
+            <div className="absolute inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-[#00E5FF] to-transparent animate-laser shadow-[0_0_14px_#00E5FF] pointer-events-none" />
           )}
 
           {/* PHASE 1: SCANNING / VERIFYING */}
           {stage === 'scan' && (
             <div className="flex flex-col items-center space-y-4 w-full">
-              {/* Rotating tech radar glyph in Electric Violet */}
+              {/* Rotating tech radar glyph in Electric Cyan */}
               <div className="relative w-16 h-16 flex items-center justify-center">
-                <div className="absolute inset-0 rounded-full border border-[#581c87] border-dashed animate-spin" style={{ animationDuration: '6s' }} />
-                <div className="absolute inset-2 rounded-full border border-[#a855f7]/40" />
-                <div className="w-8 h-8 rounded-full border-2 border-t-[#a855f7] border-r-[#a855f7] border-b-transparent border-l-transparent animate-spin" />
+                <div className="absolute inset-0 rounded-full border border-[#167DFF]/60 border-dashed animate-spin" style={{ animationDuration: '6s' }} />
+                <div className="absolute inset-2 rounded-full border border-[#00E5FF]/40" />
+                <div className="w-8 h-8 rounded-full border-2 border-t-[#00E5FF] border-r-[#42BFFF] border-b-transparent border-l-transparent animate-spin" />
               </div>
 
               {/* Status Header */}
               <div className="space-y-1">
-                <div className="text-white text-xs sm:text-[13px] font-black tracking-[0.24em] uppercase font-tech animate-pulse">
+                <div className="text-[#F4F9FF] text-xs sm:text-[13px] font-black tracking-[0.24em] uppercase font-tech animate-pulse">
                   VERIFYING ACCESS KEY
                 </div>
-                <div className="text-[#a1a1aa] text-[10px] font-mono-code tracking-widest uppercase">
+                <div className="text-[#A5B4C7] text-[10px] font-mono-code tracking-widest uppercase">
                   CRYPTOGRAPHIC VALIDATION
                 </div>
               </div>
 
-              {/* Thin glowing purple progress line */}
-              <div className="relative w-full h-[2px] bg-[#1a1a24] rounded-full overflow-hidden mt-2">
-                <div className="absolute inset-y-0 bg-[#a855f7] rounded-full animate-scanning-progress shadow-[0_0_10px_#a855f7]" />
+              {/* Thin glowing cyan progress line */}
+              <div className="relative w-full h-[2px] bg-[#080D14] rounded-full overflow-hidden mt-2">
+                <div className="absolute inset-y-0 bg-[#00E5FF] rounded-full animate-scanning-progress shadow-[0_0_10px_#00E5FF]" />
               </div>
             </div>
           )}
@@ -147,7 +147,7 @@ export const VerificationOverlay: React.FC<VerificationOverlayProps> = ({
 
               {/* Success Typography */}
               <div className="space-y-1">
-                <div className="text-white text-sm sm:text-base font-black tracking-[0.24em] uppercase font-tech drop-shadow-[0_0_10px_rgba(0,217,160,0.4)]">
+                <div className="text-[#F4F9FF] text-sm sm:text-base font-black tracking-[0.24em] uppercase font-tech drop-shadow-[0_0_10px_rgba(0,217,160,0.4)]">
                   ACCESS VERIFIED
                 </div>
                 <div className="text-[#00D9A0] text-[10.5px] sm:text-[11px] font-mono-code tracking-[0.18em] uppercase font-bold">
@@ -181,7 +181,7 @@ export const VerificationOverlay: React.FC<VerificationOverlayProps> = ({
                 <div className="text-[#E50914] text-xs sm:text-[13px] font-black tracking-[0.22em] uppercase font-tech">
                   {errorMessage || 'INVALID ACCESS KEY'}
                 </div>
-                <div className="text-[#777780] text-[10px] font-mono-code tracking-widest uppercase">
+                <div className="text-[#A5B4C7] text-[10px] font-mono-code tracking-widest uppercase">
                   VERIFICATION REJECTED
                 </div>
               </div>
