@@ -42,20 +42,20 @@ export const CenterLogo: React.FC<CenterLogoProps> = ({ settings }) => {
       }}
     >
       <div className="relative group flex items-center justify-center w-full max-w-[340px] sm:max-w-[370px] px-2">
-        {/* Outer Cyber Ice Blue Ambient Aura */}
+        {/* Controlled Cyber Ice-Blue Ambient Aura (reduced by ~20%) */}
         <div 
-          className="absolute inset-0 rounded-full blur-2xl opacity-65 pointer-events-none transition-opacity duration-500 group-hover:opacity-90"
+          className="absolute inset-0 rounded-full blur-2xl opacity-44 pointer-events-none transition-opacity duration-500 group-hover:opacity-60"
           style={{
-            background: 'radial-gradient(circle, rgba(0, 229, 255, 0.62) 0%, rgba(66, 191, 255, 0.32) 42%, rgba(22, 125, 255, 0.14) 68%, transparent 82%)',
-            transform: 'scale(1.22)'
+            background: 'radial-gradient(circle, rgba(0, 207, 232, 0.38) 0%, rgba(22, 139, 255, 0.19) 45%, transparent 78%)',
+            transform: 'scale(1.15)'
           }}
         />
 
-        {/* Inner Intense Cyan Core Backlight */}
+        {/* Inner Cyan Core Backlight (reduced by ~20%) */}
         <div 
-          className="absolute w-36 h-36 sm:w-40 sm:h-40 rounded-full blur-xl opacity-55 pointer-events-none"
+          className="absolute w-36 h-36 sm:w-40 sm:h-40 rounded-full blur-xl opacity-36 pointer-events-none"
           style={{
-            background: 'radial-gradient(circle, rgba(244, 249, 255, 0.45) 0%, rgba(0, 229, 255, 0.55) 45%, transparent 75%)',
+            background: 'radial-gradient(circle, rgba(244, 247, 251, 0.25) 0%, rgba(0, 207, 232, 0.34) 45%, transparent 75%)',
           }}
         />
 
@@ -64,12 +64,12 @@ export const CenterLogo: React.FC<CenterLogoProps> = ({ settings }) => {
           src={logoSrc}
           alt={settings.websiteTitle || 'REVOX PANEL'}
           onError={() => setLoadFailed(true)}
-          className="relative z-10 object-contain animate-revox-logo filter brightness-[1.04] contrast-[1.04] hover:brightness-110 transition-all duration-300"
+          className="relative z-10 object-contain animate-revox-logo filter brightness-[1.02] contrast-[1.02] hover:brightness-106 transition-all duration-300"
           style={{
             width: `${width}px`,
             maxWidth: '92vw',
             maxHeight: 'min(248px, 33vh)',
-            filter: 'drop-shadow(0 0 18px rgba(0, 229, 255, 0.58)) drop-shadow(0 12px 30px rgba(22, 125, 255, 0.42))',
+            filter: 'drop-shadow(0 0 13px rgba(0, 207, 232, 0.38)) drop-shadow(0 10px 21px rgba(22, 139, 255, 0.26))',
           }}
           referrerPolicy="no-referrer"
         />

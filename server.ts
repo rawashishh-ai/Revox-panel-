@@ -61,6 +61,20 @@ export interface ButtonSettings {
   introFeaturePoints?: string[];
 }
 
+export interface PurchasePlan {
+  id: string;
+  name: string;
+  priceINR: number | null;
+  currency: string;
+  durationValue: number | null;
+  durationUnit: 'minutes' | 'hours' | 'days' | 'lifetime';
+  validityLabel?: string;
+  description: string;
+  features: string[];
+  badge?: string;
+  available: boolean;
+}
+
 export interface SiteSettings {
   logoStoragePath?: string;
   logoUrl: string;
@@ -88,6 +102,8 @@ export interface SiteSettings {
   keySalesEnabled?: boolean;
   keyPriceINR?: number;
   keySaleDurationDays?: number;
+  keyPlans?: PurchasePlan[];
+  paymentGatewayConfigured?: boolean;
   updatedAt: string;
   updatedBy?: string;
   version: number;
@@ -135,6 +151,10 @@ export interface AdminAuditLog {
 export interface PaymentOrder {
   orderId: string;
   paymentId?: string;
+  planId?: string;
+  planName?: string;
+  planDurationValue?: number;
+  planDurationUnit?: 'minutes' | 'hours' | 'days' | 'lifetime';
   amount: number;
   currency: string;
   paymentStatus: 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELLED';
@@ -613,6 +633,8 @@ function normalizeSettings(raw: Partial<SiteSettings>): SiteSettings {
     keySalesEnabled,
     keyPriceINR,
     keySaleDurationDays,
+    keyPlans: Array.isArray(raw.keyPlans) ? raw.keyPlans : undefined,
+    paymentGatewayConfigured: Boolean(process.env.TRANZUPI_API_KEY && process.env.TRANZUPI_SECRET_TOKEN),
     updatedAt: raw.updatedAt || new Date().toISOString(),
     updatedBy: raw.updatedBy || 'system',
     version
@@ -974,7 +996,30 @@ function assignKeyToOrder(order: PaymentOrder): { order: PaymentOrder; keyStr: s
 
   const keys = getKeys();
   const settings = getSettings();
-  const durationDays = settings.keySaleDurationDays || 30;
+  const unit: 'minutes' | 'hours' | 'days' | 'lifetime' =
+    order.planDurationUnit && ['minutes', 'hours', 'days', 'lifetime'].includes(order.planDurationUnit)
+      ? order.planDurationUnit
+      : 'days';
+  const rawVal =
+    typeof order.planDurationValue === 'number' && order.planDurationValue > 0
+      ? order.planDurationValue
+      : settings.keySaleDurationDays || 30;
+
+  let durationDays = 30;
+  let durationMs = 30 * 24 * 60 * 60 * 1000;
+  if (unit === 'lifetime') {
+    durationDays = 0;
+    durationMs = 0;
+  } else if (unit === 'minutes') {
+    durationMs = rawVal * 60 * 1000;
+    durationDays = Number((rawVal / (60 * 24)).toFixed(4));
+  } else if (unit === 'hours') {
+    durationMs = rawVal * 60 * 60 * 1000;
+    durationDays = Number((rawVal / 24).toFixed(4));
+  } else {
+    durationDays = rawVal;
+    durationMs = rawVal * 24 * 60 * 60 * 1000;
+  }
 
   let keyStr = generateHardCryptographicKey('RVX');
   while (keys.some(k => k.key === keyStr)) {
@@ -984,16 +1029,17 @@ function assignKeyToOrder(order: PaymentOrder): { order: PaymentOrder; keyStr: s
   const assignedKeyDoc: AccessKey = {
     id: keyStr,
     key: keyStr,
+    customerName: order.customerName || 'Website Customer',
     status: 'active',
     durationDays,
-    durationUnit: 'days',
-    durationValue: durationDays,
-    durationMs: durationDays * 24 * 60 * 60 * 1000,
+    durationUnit: unit,
+    durationValue: unit === 'lifetime' ? 0 : rawVal,
+    durationMs,
     createdAt: new Date().toISOString(),
     activatedAt: null,
     expiresAt: null,
     boundDeviceId: null,
-    notes: `Purchased Order: ${order.orderId} (1-Device Lock)`
+    notes: `Purchased Order: ${order.orderId}${order.planName ? ` (${order.planName})` : ''} (1-Device Lock)`
   };
 
   keys.unshift(assignedKeyDoc);
@@ -2468,24 +2514,84 @@ const TRANZUPI_SECRET_TOKEN = process.env.TRANZUPI_SECRET_TOKEN || '';
 const TRANZUPI_BASE_URL = process.env.TRANZUPI_BASE_URL || 'https://api.tranzupi.com';
 const TRANZUPI_MERCHANT_VPA = process.env.TRANZUPI_MERCHANT_VPA || '';
 
-// API: Create Real Payment Order with TranzUPI Gateway
+// API: Create Real Payment Order with TranzUPI Gateway / Direct UPI Checkout
 app.post('/api/payments/create-order', async (req: Request, res: Response) => {
-  const { customerName, customerPhone } = req.body || {};
+  const { planId, customerName, customerPhone } = req.body || {};
   const settings = getSettings();
-  const amount = settings.keyPriceINR || 199;
+
+  if (settings.keySalesEnabled === false) {
+    return res.status(400).json({
+      success: false,
+      code: 'SALES_DISABLED',
+      message: 'Online key sales are currently disabled by the administrator.'
+    });
+  }
+
+  // Resolve selected plan from settings.keyPlans or fallback to primary configured keyPriceINR
+  let amount = Number(settings.keyPriceINR) || 0;
+  let resolvedPlanId = String(planId || 'plan_standard_30d');
+  let resolvedPlanName = 'REVOX ACCESS KEY';
+  let resolvedDurationValue = Number(settings.keySaleDurationDays) || 30;
+  let resolvedDurationUnit: 'minutes' | 'hours' | 'days' | 'lifetime' = 'days';
+
+  if (Array.isArray(settings.keyPlans) && settings.keyPlans.length > 0) {
+    const matchedPlan =
+      settings.keyPlans.find(p => p.id === resolvedPlanId) ||
+      settings.keyPlans.find(p => p.available && typeof p.priceINR === 'number' && p.priceINR > 0);
+    if (!matchedPlan) {
+      return res.status(400).json({
+        success: false,
+        message: 'Selected key plan was not found.'
+      });
+    }
+    if (
+      !matchedPlan.available ||
+      typeof matchedPlan.priceINR !== 'number' ||
+      matchedPlan.priceINR <= 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Selected key plan is not configured for purchase yet.'
+      });
+    }
+    resolvedPlanId = matchedPlan.id;
+    amount = matchedPlan.priceINR;
+    resolvedPlanName = matchedPlan.name || 'REVOX ACCESS KEY';
+    resolvedDurationUnit = matchedPlan.durationUnit || 'days';
+    resolvedDurationValue =
+      matchedPlan.durationUnit === 'lifetime'
+        ? 0
+        : Number(matchedPlan.durationValue) || 30;
+  }
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Plan price is not configured.'
+    });
+  }
 
   const orderId = `ORD_${Date.now()}_${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
   const sales = getSales();
+  const merchantVpa = TRANZUPI_MERCHANT_VPA || 'ashishseller@upi';
+  const defaultUpiIntent = `upi://pay?pa=${encodeURIComponent(merchantVpa)}&pn=${encodeURIComponent(
+    settings.panelName || 'REVOX PANEL'
+  )}&am=${amount}&cu=INR&tn=${encodeURIComponent(`Key-${orderId}`)}`;
 
   const newOrder: PaymentOrder = {
     orderId,
+    planId: resolvedPlanId,
+    planName: resolvedPlanName,
+    planDurationValue: resolvedDurationValue,
+    planDurationUnit: resolvedDurationUnit,
     amount,
     currency: 'INR',
     paymentStatus: 'PENDING',
     customerName: customerName || 'VIP Customer',
     customerPhone: customerPhone || '',
     purchasedAt: new Date().toISOString(),
-    keyDeliveryStatus: 'PENDING'
+    keyDeliveryStatus: 'PENDING',
+    upiIntentUrl: defaultUpiIntent
   };
 
   if (TRANZUPI_API_KEY && TRANZUPI_SECRET_TOKEN) {
@@ -2501,8 +2607,8 @@ app.post('/api/payments/create-order', async (req: Request, res: Response) => {
           amount,
           currency: 'INR',
           order_id: orderId,
-          merchant_vpa: TRANZUPI_MERCHANT_VPA,
-          note: `ANTIBAN Access Key - ${orderId}`,
+          merchant_vpa: merchantVpa,
+          note: `${resolvedPlanName} - ${orderId}`,
           customer_name: customerName || 'Customer',
           customer_phone: customerPhone || ''
         })
@@ -2529,8 +2635,13 @@ app.post('/api/payments/create-order', async (req: Request, res: Response) => {
 
   return res.json({
     success: true,
+    gatewayConfigured: true,
     order: {
       orderId: newOrder.orderId,
+      planId: newOrder.planId,
+      planName: newOrder.planName,
+      planDurationValue: newOrder.planDurationValue,
+      planDurationUnit: newOrder.planDurationUnit,
       amount: newOrder.amount,
       currency: newOrder.currency,
       paymentStatus: newOrder.paymentStatus,
@@ -2540,6 +2651,78 @@ app.post('/api/payments/create-order', async (req: Request, res: Response) => {
     },
     paymentUrl: newOrder.paymentUrl,
     upiIntentUrl: newOrder.upiIntentUrl
+  });
+});
+
+// API: Complete or Reject Payment Order & Generate Real 1-Device Locked Key
+app.post('/api/payments/complete-order', async (req: Request, res: Response) => {
+  const { orderId, action } = req.body || {};
+  if (!orderId) {
+    return res.status(400).json({ success: false, message: 'Missing orderId' });
+  }
+
+  const sales = getSales();
+  let order = sales.find(s => s.orderId.toUpperCase() === String(orderId).trim().toUpperCase());
+
+  if (!order) {
+    const remoteOrder = await firestoreGetDoc('keySales', String(orderId).trim());
+    if (remoteOrder && remoteOrder.orderId) {
+      order = remoteOrder as PaymentOrder;
+      sales.unshift(order);
+    }
+  }
+
+  if (!order) {
+    return res.status(404).json({ success: false, message: 'Payment order not found' });
+  }
+
+  if (action === 'reject') {
+    order.paymentStatus = 'FAILED';
+    saveSales(sales, order);
+    return res.json({
+      success: true,
+      order: {
+        orderId: order.orderId,
+        amount: order.amount,
+        currency: order.currency,
+        paymentStatus: order.paymentStatus,
+        purchasedAt: order.purchasedAt,
+        keyDeliveryStatus: order.keyDeliveryStatus
+      }
+    });
+  }
+
+  // Confirm payment & generate real access key with the plan's exact validity
+  order.paymentStatus = 'SUCCESS';
+  assignKeyToOrder(order);
+  saveSales(sales, order);
+
+  recordAdminLog({
+    action: 'KEY_GENERATED',
+    label: 'Website key purchase',
+    customerName: order.customerName || 'Website Customer',
+    maskedKey: maskKeyForAudit(order.assignedKey || '', false),
+    keyId: order.assignedKeyId || order.assignedKey || '',
+    details: `Order ${order.orderId} (₹${order.amount}) — ${order.planDurationValue || 30} ${(order.planDurationUnit || 'days').toUpperCase()}`
+  });
+
+  return res.json({
+    success: true,
+    order: {
+      orderId: order.orderId,
+      planId: order.planId,
+      planName: order.planName,
+      planDurationValue: order.planDurationValue,
+      planDurationUnit: order.planDurationUnit,
+      amount: order.amount,
+      currency: order.currency,
+      paymentStatus: order.paymentStatus,
+      purchasedAt: order.purchasedAt,
+      paidAt: order.paidAt,
+      keyDeliveryStatus: order.keyDeliveryStatus,
+      assignedKey: order.assignedKey
+    },
+    assignedKey: order.assignedKey
   });
 });
 

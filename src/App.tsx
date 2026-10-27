@@ -12,6 +12,8 @@ import { LanguageSelector } from './components/LanguageSelector';
 import { AuthorizedDashboard } from './components/AuthorizedDashboard';
 import { AdminPanel } from './components/AdminPanel';
 import { GetKeyModal } from './components/GetKeyModal';
+import { GetKeyChoiceModal } from './components/GetKeyChoiceModal';
+import { BuyKeyPage } from './components/BuyKeyPage';
 import { IntroVideoScreen } from './components/IntroVideoScreen';
 import { db, testConnection } from './firebase';
 import { doc, getDoc, onSnapshot, collection, query, where, getDocs } from 'firebase/firestore';
@@ -59,6 +61,15 @@ export default function App() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [adminPreAuthorized, setAdminPreAuthorized] = useState(false);
   const [showGetKeyModal, setShowGetKeyModal] = useState(false);
+  const [showGetKeyChoiceModal, setShowGetKeyChoiceModal] = useState(false);
+  const [isBuyKeyRoute, setIsBuyKeyRoute] = useState<boolean>(() => {
+    try {
+      const p = window.location.pathname.toLowerCase();
+      return p === '/buy-key' || p === '/buy-key/';
+    } catch {
+      return false;
+    }
+  });
   const [purchasedKey, setPurchasedKey] = useState<string>('');
   const [logoClickCount, setLogoClickCount] = useState(0);
 
@@ -204,6 +215,11 @@ export default function App() {
           keySalesEnabled: incoming.keySalesEnabled ?? prev?.keySalesEnabled ?? true,
           keyPriceINR: typeof incoming.keyPriceINR === 'number' ? incoming.keyPriceINR : (prev?.keyPriceINR ?? 199),
           keySaleDurationDays: typeof incoming.keySaleDurationDays === 'number' ? incoming.keySaleDurationDays : (prev?.keySaleDurationDays ?? 30),
+          keyPlans: Array.isArray(incoming.keyPlans) ? incoming.keyPlans : prev?.keyPlans,
+          paymentGatewayConfigured:
+            incoming.paymentGatewayConfigured !== undefined
+              ? Boolean(incoming.paymentGatewayConfigured)
+              : prev?.paymentGatewayConfigured,
           updatedAt: incoming.updatedAt ?? prev?.updatedAt ?? new Date().toISOString(),
           updatedBy: incoming.updatedBy ?? prev?.updatedBy ?? 'admin',
           version: incVersion
@@ -596,13 +612,24 @@ export default function App() {
   };
 
   // Browser Back button handler:
+  // - Syncs /buy-key route state
   // - If user has NOT unlocked a key and presses Back on Key Entry screen, return to Gameplay screen!
   // - If user HAS unlocked a key and opened manual Gameplay view, pressing Back returns to Unlocked Dashboard!
   useEffect(() => {
     const handlePopState = () => {
+      const path = window.location.pathname.toLowerCase();
+      if (path === '/buy-key' || path === '/buy-key/') {
+        setIsBuyKeyRoute(true);
+        return;
+      }
+      setIsBuyKeyRoute(false);
+
       if (unlockedKeyData) {
         setManualGameplayView(false);
         setHasPassedIntro(true);
+      } else if (window.history.state?.rvxView === 'key-entry') {
+        setHasPassedIntro(true);
+        setManualGameplayView(false);
       } else {
         setHasPassedIntro(false);
         setManualGameplayView(false);
@@ -613,15 +640,53 @@ export default function App() {
   }, [unlockedKeyData]);
 
   const showIntroVideoGate =
-    manualGameplayView ||
-    (!unlockedKeyData &&
-      !hasPassedIntro &&
-      activeSettings.introVideoEnabled !== false);
+    !isBuyKeyRoute &&
+    (manualGameplayView ||
+      (!unlockedKeyData &&
+        !hasPassedIntro &&
+        activeSettings.introVideoEnabled !== false));
+
+  if (isBuyKeyRoute) {
+    return (
+      <>
+        <BuyKeyPage
+          settings={activeSettings}
+          onBack={() => {
+            try {
+              window.history.pushState({ rvxView: 'key-entry' }, '', '/');
+            } catch {}
+            setIsBuyKeyRoute(false);
+            setHasPassedIntro(true);
+            setManualGameplayView(false);
+          }}
+          onContinueWithKey={(verifiedKey) => {
+            setPurchasedKey(verifiedKey);
+            try {
+              window.history.pushState({ rvxView: 'key-entry' }, '', '/');
+            } catch {}
+            setIsBuyKeyRoute(false);
+            setHasPassedIntro(true);
+            setManualGameplayView(false);
+          }}
+        />
+        {adminOpen && (
+          <AdminPanel
+            currentSettings={activeSettings}
+            initialAuthorized={adminPreAuthorized}
+            onUpdateSettings={(updated) => applyAuthoritativeSettings(updated, true)}
+            onClose={() => {
+              setAdminOpen(false);
+              setAdminPreAuthorized(false);
+            }}
+          />
+        )}
+      </>
+    );
+  }
 
   return (
-    <div className="relative h-[100dvh] max-h-[100dvh] bg-[#05070B] text-[#F4F9FF] flex flex-col justify-between overflow-hidden select-none">
-      {/* Background scanline pattern & radial gradient vignette */}
-      <div className="fixed inset-0 scanlines-overlay z-0 pointer-events-none" />
+    <div className="relative h-[100dvh] max-h-[100dvh] bg-[#070B12] text-[#F4F7FB] flex flex-col justify-between overflow-hidden select-none">
+      {/* Smooth, clean dark background depth without scanlines or dark muddy vignette */}
       <div className="fixed inset-0 vignette-radial z-0 pointer-events-none" />
 
       {/* Top Header Bar: Language Selector on Left + Gameplay Button on Right */}
@@ -641,11 +706,11 @@ export default function App() {
               setManualGameplayView(true);
             }}
             title="Watch Panel Gameplay Video"
-            className="relative overflow-hidden bg-gradient-to-b from-[#122033] via-[#0B1420] to-[#070C14] hover:from-[#162840] hover:to-[#0A1320] active:scale-95 border border-[#00E5FF]/65 hover:border-[#FFFFFF] text-[#FFFFFF] text-xs font-bold tracking-wider px-3.5 py-1.5 rounded-[4px] flex items-center gap-1.5 cursor-pointer transition-all shadow-[0_0_14px_rgba(0,229,255,0.28),inset_0_1px_1px_rgba(255,255,255,0.4)] hover:shadow-[0_0_20px_rgba(0,229,255,0.5)] font-tech uppercase"
+            className="relative overflow-hidden bg-[#101B28] hover:bg-[#152334] active:scale-95 border border-[#1B3345] hover:border-[#00CFE8] text-[#F4F7FB] text-xs font-bold tracking-wider px-3.5 py-1.5 rounded-[4px] flex items-center gap-1.5 cursor-pointer transition-all shadow-[0_3px_11px_rgba(0,0,0,0.48),inset_0_1px_0_rgba(244,247,251,0.1)] hover:shadow-[0_0_13px_rgba(0,207,232,0.22)] font-tech uppercase"
           >
-            <span className="absolute top-0 left-2 right-2 h-[1px] bg-gradient-to-r from-transparent via-white/80 to-transparent pointer-events-none" />
-            <span className="drop-shadow-[0_0_6px_rgba(0,229,255,0.75)]">🎬</span>
-            <span className="drop-shadow-[0_0_6px_rgba(0,229,255,0.45)]">GAMEPLAY</span>
+            <span className="absolute top-0 left-2 right-2 h-[1px] bg-gradient-to-r from-transparent via-[#00CFE8]/48 to-transparent pointer-events-none" />
+            <span>🎬</span>
+            <span>GAMEPLAY</span>
           </button>
         )}
       </header>
@@ -657,27 +722,27 @@ export default function App() {
         }`}
       >
         {initialLoading && !settings ? (
-          /* Premium Dark Cyber Ice Blue Loading Skeleton */
+          /* Clean Dark Gaming Loading Skeleton */
           <div className="flex flex-col justify-between h-full py-2 animate-pulse">
-            <div className="h-44 w-full bg-[#0D1520] border border-[#00E5FF]/30 rounded-[4px] p-4 flex flex-col justify-between">
-              <div className="h-4 w-1/3 bg-[#122030] rounded" />
-              <div className="h-6 w-2/3 bg-[#16293D] rounded" />
+            <div className="h-44 w-full bg-[#101B28] border border-[#1B3345] rounded-[4px] p-4 flex flex-col justify-between">
+              <div className="h-4 w-1/3 bg-[#152334] rounded" />
+              <div className="h-6 w-2/3 bg-[#152334] rounded" />
               <div className="space-y-2">
-                <div className="h-3 w-full bg-[#0A1018] rounded" />
-                <div className="h-3 w-5/6 bg-[#0A1018] rounded" />
-                <div className="h-3 w-4/6 bg-[#0A1018] rounded" />
+                <div className="h-3 w-full bg-[#0A111B] rounded" />
+                <div className="h-3 w-5/6 bg-[#0A111B] rounded" />
+                <div className="h-3 w-4/6 bg-[#0A111B] rounded" />
               </div>
-              <div className="h-8 w-full bg-[#122030] rounded" />
+              <div className="h-8 w-full bg-[#152334] rounded" />
             </div>
 
             <div className="flex items-center justify-center my-4">
-              <div className="w-28 h-28 rounded-full bg-[#0D1520] border border-[#00E5FF]/30" />
+              <div className="w-28 h-28 rounded-full bg-[#101B28] border border-[#1B3345]" />
             </div>
 
             <div className="space-y-2.5">
-              <div className="h-11 w-full bg-[#080D14] border border-[#00E5FF]/30 rounded" />
-              <div className="h-10 w-full bg-[#0D1520] rounded" />
-              <div className="h-12 w-full bg-[#167DFF]/35 rounded" />
+              <div className="h-11 w-full bg-[#0A111B] border border-[#1B3345] rounded" />
+              <div className="h-10 w-full bg-[#101B28] rounded" />
+              <div className="h-12 w-full bg-[#168BFF]/30 rounded" />
             </div>
           </div>
         ) : showIntroVideoGate ? (
@@ -726,7 +791,11 @@ export default function App() {
         ) : (
           <div key="page-home" className="flex flex-col justify-between h-full py-1 animate-page-fade">
             {/* Announcement Card */}
-            <AnnouncementCard settings={activeSettings} lang={lang} />
+            <AnnouncementCard
+              settings={activeSettings}
+              lang={lang}
+              onOpenGetKeyChoice={() => setShowGetKeyChoiceModal(true)}
+            />
 
             {/* Dynamic Center Logo (Secret 3 taps to open admin panel) */}
             <div onClick={handleLogoSecretClick} className="cursor-default">
@@ -736,6 +805,8 @@ export default function App() {
             {/* Access Key Section */}
             <AccessKeyForm
               lang={lang}
+              purchasedKey={purchasedKey}
+              onOpenGetKey={() => setShowGetKeyChoiceModal(true)}
               onOpenAdmin={() => {
                 setAdminPreAuthorized(true);
                 setAdminOpen(true);
@@ -753,6 +824,19 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* Dual Get Key Selection Modal (WhatsApp vs Website) */}
+      <GetKeyChoiceModal
+        isOpen={showGetKeyChoiceModal}
+        settings={activeSettings}
+        onClose={() => setShowGetKeyChoiceModal(false)}
+        onSelectWebsite={() => {
+          try {
+            window.history.pushState({ rvxView: 'buy-key' }, '', '/buy-key');
+          } catch {}
+          setIsBuyKeyRoute(true);
+        }}
+      />
 
       {/* Admin Panel Modal */}
       {adminOpen && (

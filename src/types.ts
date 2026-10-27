@@ -1,5 +1,17 @@
 export type Language = 'EN' | 'HI';
 
+export interface PurchasePlan {
+  id: string;
+  name: string;
+  priceINR: number | null;
+  currency?: string;
+  validityLabel: string;
+  durationValue: number | null;
+  durationUnit: 'minutes' | 'hours' | 'days' | 'lifetime';
+  description: string;
+  available: boolean;
+}
+
 export interface ButtonSettings {
   downloadHackUrl?: string;
   setupVideoUrl?: string;
@@ -8,6 +20,7 @@ export interface ButtonSettings {
   keySalesEnabled?: boolean;
   keyPriceINR?: number;
   keySaleDurationDays?: number;
+  keyPlans?: PurchasePlan[];
   introVideoUrl?: string;
   introVideoEnabled?: boolean;
   introVideoTitle?: string;
@@ -42,6 +55,8 @@ export interface SiteSettings {
   keySalesEnabled?: boolean;
   keyPriceINR?: number;
   keySaleDurationDays?: number;
+  keyPlans?: PurchasePlan[];
+  paymentGatewayConfigured?: boolean;
   updatedAt?: string;
   updatedBy?: string;
   version?: number;
@@ -89,6 +104,10 @@ export interface AdminAuditLog {
 export interface PaymentOrder {
   orderId: string;
   paymentId?: string;
+  planId?: string;
+  planName?: string;
+  planDurationValue?: number;
+  planDurationUnit?: 'minutes' | 'hours' | 'days' | 'lifetime';
   amount: number;
   currency: string;
   paymentStatus: 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELLED';

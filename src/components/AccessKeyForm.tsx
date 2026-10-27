@@ -400,36 +400,36 @@ export const AccessKeyForm: React.FC<AccessKeyFormProps> = ({
       />
 
       {/* Top informational text */}
-      <div className="text-center text-[#A5B4C7]/85 text-[10px] sm:text-[10.5px] font-semibold tracking-[0.22em] uppercase mb-1.5 font-mono-code">
+      <div className="text-center text-[#A7B5C5] text-[10px] sm:text-[10.5px] font-semibold tracking-[0.22em] uppercase mb-1.5 font-mono-code">
         {t.noAccount}
       </div>
 
-      {/* Label: ACCESS KEY with glowing cyan square indicator */}
+      {/* Label: ACCESS KEY with cyan square indicator */}
       <div className="flex items-center justify-between mb-1.5 px-0.5">
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 bg-[#00E5FF] shadow-[0_0_10px_#00E5FF,0_0_4px_#FFFFFF] inline-block" />
-          <span className="text-[#F4F9FF]/90 text-[10.5px] sm:text-[11px] font-bold tracking-[0.24em] uppercase font-mono-code drop-shadow-[0_0_8px_rgba(0,229,255,0.35)]">
+          <span className="w-2 h-2 bg-[#00CFE8] shadow-[0_0_6px_rgba(0,207,232,0.8)] inline-block" />
+          <span className="text-[#F4F7FB] text-[10.5px] sm:text-[11px] font-bold tracking-[0.24em] uppercase font-mono-code">
             {t.accessKey}
           </span>
         </div>
         {errorMessage && (
-          <span className="text-[#ef4444] text-[10px] font-mono-code font-bold tracking-wider uppercase animate-fade-in">
+          <span className="text-[#FF5263] text-[10px] font-mono-code font-bold tracking-wider uppercase animate-fade-in">
             {errorMessage}
           </span>
         )}
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-2">
-        {/* Input container with 1.2px chamfered specular cyan-white border, cyan focus glow & glossy PASTE button */}
+        {/* Input container with 1px chamfered border (#1B3345 -> #00CFE8 on focus), #0A111B input surface & #101B28 PASTE button */}
         <div 
-          className={`relative p-[1.2px] ${
+          className={`relative p-[1px] ${
             errorMessage
-              ? 'bg-[#ef4444] shadow-[0_0_16px_rgba(239,68,68,0.35)]'
-              : 'bg-gradient-to-r from-[#00E5FF]/70 via-[#F4F9FF]/55 to-[#42BFFF]/70 focus-within:from-[#00E5FF] focus-within:via-[#FFFFFF] focus-within:to-[#00E5FF] shadow-[0_6px_22px_-6px_rgba(0,229,255,0.28)] focus-within:shadow-[0_0_24px_rgba(0,229,255,0.48)]'
+              ? 'bg-[#FF5263] shadow-[0_0_13px_rgba(255,82,99,0.26)]'
+              : 'bg-gradient-to-r from-[#00CFE8]/45 via-[#1B3345] to-[#168BFF]/45 focus-within:from-[#00CFE8] focus-within:via-[#00CFE8]/85 focus-within:to-[#168BFF] shadow-[0_6px_18px_-8px_rgba(0,0,0,0.65)] focus-within:shadow-[0_0_16px_rgba(0,207,232,0.26)]'
           } clip-input-box transition-all duration-200`}
         >
-          <div className="relative bg-gradient-to-b from-[#060A10] via-[#080D14] to-[#0A111B] clip-input-box flex items-center justify-between px-3 py-1.5 shadow-[inset_0_2px_10px_rgba(0,0,0,0.85),inset_0_0_16px_rgba(0,229,255,0.08)]">
-            <span className="absolute top-0 left-4 right-4 h-[1px] bg-gradient-to-r from-transparent via-[#00E5FF]/55 to-transparent pointer-events-none" />
+          <div className="relative bg-[#0A111B] clip-input-box flex items-center justify-between px-3 py-1.5 shadow-[inset_0_2px_6px_rgba(0,0,0,0.65)]">
+            <span className="absolute top-0 left-4 right-4 h-[1px] bg-gradient-to-r from-transparent via-[#00CFE8]/36 to-transparent pointer-events-none" />
             <input
               type="text"
               value={keyInput}
@@ -440,7 +440,7 @@ export const AccessKeyForm: React.FC<AccessKeyFormProps> = ({
               placeholder="RVX-XXXX-XXXX-XXXX"
               autoComplete="off"
               spellCheck="false"
-              className="w-full bg-transparent text-[#FFFFFF] placeholder-[#4E647E] text-sm sm:text-[15px] font-mono-code font-bold tracking-widest py-1.5 outline-none min-w-0 drop-shadow-[0_0_8px_rgba(0,229,255,0.25)]"
+              className="w-full bg-transparent text-[#F4F7FB] placeholder-[#A7B5C5]/55 text-sm sm:text-[15px] font-mono-code font-bold tracking-widest py-1.5 outline-none focus-visible:outline-none min-w-0"
             />
 
             <button
@@ -448,40 +448,40 @@ export const AccessKeyForm: React.FC<AccessKeyFormProps> = ({
               onClick={handlePaste}
               disabled={loading}
               title="Paste from clipboard"
-              className="relative bg-gradient-to-b from-[#132235] to-[#0A121E] hover:from-[#182C44] hover:to-[#0E1929] active:scale-95 text-[#FFFFFF] text-[10.5px] sm:text-[11px] font-bold tracking-[0.16em] uppercase py-1.5 px-3.5 shrink-0 clip-paste-btn font-tech transition-all cursor-pointer border border-[#00E5FF]/65 hover:border-[#FFFFFF] shadow-[0_0_12px_rgba(0,229,255,0.25),inset_0_1px_1px_rgba(255,255,255,0.35)] hover:shadow-[0_0_18px_rgba(0,229,255,0.48)]"
+              className="relative bg-[#101B28] hover:bg-[#152334] active:scale-95 text-[#F4F7FB] text-[10.5px] sm:text-[11px] font-bold tracking-[0.16em] uppercase py-1.5 px-3.5 shrink-0 clip-paste-btn font-tech transition-all cursor-pointer border border-[#1B3345] hover:border-[#00CFE8] shadow-[0_2px_8px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(244,247,251,0.1)] hover:shadow-[0_0_11px_rgba(0,207,232,0.22)]"
             >
               {pasteFeedback ? t.pasted : t.paste}
             </button>
           </div>
         </div>
 
-        {/* Full-width High-Gloss Cyan-to-Electric-Blue Primary UNLOCK Button */}
+        {/* Full-width Primary UNLOCK Button (#00CFE8 -> #168BFF) */}
         <button
           type="submit"
           disabled={loading}
-          className="relative w-full cyber-primary-btn hover:brightness-110 active:scale-[0.985] text-[#05070B] py-2.5 sm:py-3 px-6 clip-unlock-btn font-tech font-black text-lg sm:text-xl tracking-[0.18em] uppercase transition-all duration-150 cursor-pointer flex items-center justify-center gap-2 disabled:opacity-75 disabled:cursor-not-allowed border-t border-white/80 overflow-hidden group"
+          className="relative w-full cyber-primary-btn hover:brightness-108 active:scale-[0.985] text-[#070B12] py-2.5 sm:py-3 px-6 clip-unlock-btn font-tech font-black text-lg sm:text-xl tracking-[0.18em] uppercase transition-all duration-150 cursor-pointer flex items-center justify-center gap-2 disabled:opacity-75 disabled:cursor-not-allowed border-t border-white/60 overflow-hidden group"
         >
-          {/* Top-Half Glossy Mirror Reflection */}
-          <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/35 to-transparent pointer-events-none" />
+          {/* Top-Half Glossy Reflection */}
+          <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/25 to-transparent pointer-events-none" />
           {/* Continuous Diagonal Mirror Sheen */}
-          <span className="absolute inset-0 w-1/3 bg-gradient-to-r from-transparent via-white/55 to-transparent pointer-events-none animate-sheen" />
+          <span className="absolute inset-0 w-1/3 bg-gradient-to-r from-transparent via-white/36 to-transparent pointer-events-none animate-sheen" />
           {loading ? (
-            <span className="relative z-10 text-base text-[#05070B] font-black">{t.unlocking}</span>
+            <span className="relative z-10 text-base text-[#070B12] font-black">{t.unlocking}</span>
           ) : (
             <>
-              <span className="relative z-10 drop-shadow-[0_1px_1px_rgba(255,255,255,0.45)]">{t.unlock}</span>
+              <span className="relative z-10 drop-shadow-[0_1px_0_rgba(255,255,255,0.28)]">{t.unlock}</span>
               <span className="relative z-10 text-lg transition-transform group-hover:translate-x-1 font-black">→</span>
             </>
           )}
         </button>
       </form>
 
-      {/* Bottom informational text */}
+      {/* Bottom informational text with clear readability */}
       <div className="text-center mt-1.5 space-y-0.5">
-        <div className="text-[#A5B4C7]/75 text-[10px] font-mono-code tracking-wide">
+        <div className="text-[#A7B5C5] text-[10px] font-mono-code tracking-wide">
           {t.timeStarts}
         </div>
-        <div className="text-[#F4F9FF]/85 text-[10.5px] font-sans font-medium">
+        <div className="text-[#F4F7FB]/90 text-[10.5px] font-sans font-medium">
           {t.noKey}
         </div>
       </div>

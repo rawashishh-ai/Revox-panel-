@@ -194,15 +194,14 @@ export const GetKeyModal: React.FC<GetKeyModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-[#05070B]/92 backdrop-blur-md animate-fade-in select-none">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-[#070B12] animate-fade-in select-none">
       
       {/* Outer Glow Vignette */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(0,229,255,0.18)_0%,transparent_75%)] pointer-events-none" />
-      <div className="absolute inset-0 scanlines-overlay opacity-60 pointer-events-none" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(0,207,232,0.14)_0%,transparent_75%)] pointer-events-none" />
 
       {/* Main Container */}
-      <div className="relative w-full max-w-[390px] p-[1px] bg-gradient-to-b from-[#00E5FF] via-[#42BFFF] to-[#167DFF]/60 clip-announcement shadow-[0_0_45px_rgba(0,229,255,0.38)]">
-        <div className="relative bg-[#0D1520] clip-announcement p-4 sm:p-5 text-[#F4F9FF] flex flex-col justify-between overflow-hidden">
+      <div className="relative w-full max-w-[390px] p-[1px] bg-gradient-to-b from-[#00CFE8] via-[#1B3345] to-[#168BFF]/60 clip-announcement shadow-[0_0_32px_rgba(0,207,232,0.28)]">
+        <div className="relative bg-[#101B28] clip-announcement p-4 sm:p-5 text-[#F4F7FB] flex flex-col justify-between overflow-hidden">
           
           {/* Close button */}
           <button

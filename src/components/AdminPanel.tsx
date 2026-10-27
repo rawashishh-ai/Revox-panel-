@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { SiteSettings, AccessKey, AdminAuditLog } from '../types';
+import { SiteSettings, AccessKey, AdminAuditLog, PurchasePlan } from '../types';
+import { resolveConfiguredKeyPlans } from '../config/purchaseConfig';
 import { auth, googleProvider, db, storage } from '../firebase';
 import { signInWithPopup, signOut } from 'firebase/auth';
 import { doc, setDoc, getDocs, collection, deleteDoc, updateDoc, query, where } from 'firebase/firestore';
@@ -203,6 +204,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [savingAllSettings, setSavingAllSettings] = useState(false);
   const videoFileInputRef = useRef<HTMLInputElement>(null);
 
+  // Key Purchase Plans & Website Checkout Configuration State
+  const [keySalesEnabled, setKeySalesEnabled] = useState<boolean>(
+    currentSettings.keySalesEnabled !== false
+  );
+  const [keyPlans, setKeyPlans] = useState<PurchasePlan[]>(() =>
+    resolveConfiguredKeyPlans(currentSettings)
+  );
+
   useEffect(() => {
     setPanelName(currentSettings.panelName || currentSettings.websiteTitle || 'REVOX PANEL');
     setLogoPreview(currentSettings.logoUrl || '/assets/revox-logo.png');
@@ -233,6 +242,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         ? Boolean(currentSettings.buttonSettings.introVideoEnabled)
         : true
     );
+    setKeySalesEnabled(currentSettings.keySalesEnabled !== false);
+    setKeyPlans(resolveConfiguredKeyPlans(currentSettings));
   }, [currentSettings.version, currentSettings.logoUrl, currentSettings.introVideoUrl]);
 
   const ensureValidAdminToken = async (forceRefresh = false): Promise<string> => {
@@ -1403,6 +1414,40 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       const cleanLines = annLines.map(l => l.trim()).filter(l => l.length > 0);
       const cleanFeatures = introFeaturePoints.map(p => p.trim()).filter(p => p.length > 0);
 
+      const sanitizedPlans: PurchasePlan[] = keyPlans.map((p, idx) => {
+        const parsedPrice =
+          p.priceINR !== null && p.priceINR !== undefined && Number(p.priceINR) > 0
+            ? Number(p.priceINR)
+            : null;
+        const parsedDur =
+          p.durationUnit === 'lifetime'
+            ? 0
+            : p.durationValue !== null && p.durationValue !== undefined && Number(p.durationValue) > 0
+            ? Number(p.durationValue)
+            : null;
+        return {
+          ...p,
+          id: p.id || `plan_${idx + 1}`,
+          name: (p.name || `Plan ${idx + 1}`).trim(),
+          priceINR: parsedPrice,
+          currency: 'INR',
+          durationValue: parsedDur,
+          durationUnit: p.durationUnit || 'days',
+          validityLabel: (p.validityLabel || '').trim(),
+          description: (p.description || '').trim(),
+          available: Boolean(p.available && parsedPrice && parsedPrice > 0)
+        };
+      });
+
+      const firstConfiguredPlan = sanitizedPlans.find(
+        p => p.available && typeof p.priceINR === 'number' && p.priceINR > 0
+      );
+      const primaryPrice = firstConfiguredPlan?.priceINR ?? currentSettings.keyPriceINR ?? 199;
+      const primaryDurationDays =
+        firstConfiguredPlan && firstConfiguredPlan.durationUnit === 'days' && firstConfiguredPlan.durationValue
+          ? firstConfiguredPlan.durationValue
+          : currentSettings.keySaleDurationDays ?? 30;
+
       await persistSettingsAuthoritatively({
         websiteTitle: cleanName,
         panelName: cleanName,
@@ -1421,13 +1466,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         introFeaturePoints: cleanFeatures,
         downloadHackUrl: cleanDownload,
         setupVideoUrl: cleanSetup,
+        keySalesEnabled,
+        keyPriceINR: primaryPrice,
+        keySaleDurationDays: primaryDurationDays,
+        keyPlans: sanitizedPlans,
         buttonSettings: {
           ...currentSettings.buttonSettings,
           introVideoUrl: cleanVideoUrl,
           introVideoEnabled,
           introFeaturePoints: cleanFeatures,
           downloadHackUrl: cleanDownload,
-          setupVideoUrl: cleanSetup
+          setupVideoUrl: cleanSetup,
+          keySalesEnabled,
+          keyPriceINR: primaryPrice,
+          keySaleDurationDays: primaryDurationDays
         }
       });
 
@@ -1444,24 +1496,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // ============================================================================
   if (!authorized) {
     return (
-      <div className="fixed inset-0 z-50 bg-[#05070B]/95 backdrop-blur-xl flex items-center justify-center p-4 select-none">
-        <div className="w-full max-w-[380px] bg-[#0D1520] border border-[#00E5FF]/35 rounded-2xl p-6 shadow-[0_0_40px_rgba(0,229,255,0.18)] text-[#F4F9FF] relative animate-fade-in">
+      <div className="fixed inset-0 z-[100] bg-[#070B12] flex items-center justify-center p-4 select-none">
+        <div className="w-full max-w-[380px] bg-[#101B28] border border-[#1B3345] rounded-2xl p-6 shadow-[0_0_32px_rgba(0,207,232,0.16)] text-[#F4F7FB] relative animate-fade-in">
           <button
             type="button"
             onClick={onClose}
-            className="absolute top-4 right-4 w-8 h-8 rounded-lg bg-[#0A1018] hover:bg-[#111C2A] border border-[#00E5FF]/25 text-[#A5B4C7] hover:text-[#F4F9FF] flex items-center justify-center cursor-pointer"
+            className="absolute top-4 right-4 w-8 h-8 rounded-lg bg-[#0A111B] hover:bg-[#152334] border border-[#1B3345] text-[#A7B5C5] hover:text-[#F4F7FB] flex items-center justify-center cursor-pointer"
           >
             ✕
           </button>
 
           <div className="flex flex-col items-center text-center mb-5">
-            <div className="w-12 h-12 rounded-xl bg-[#00E5FF]/15 border border-[#00E5FF]/45 flex items-center justify-center text-[#00E5FF] text-xl font-bold mb-3">
+            <div className="w-12 h-12 rounded-xl bg-[#00CFE8]/15 border border-[#00CFE8]/45 flex items-center justify-center text-[#00CFE8] text-xl font-bold mb-3">
               🔒
             </div>
-            <h2 className="text-xl font-black font-tech tracking-wider uppercase text-[#F4F9FF]">
+            <h2 className="text-xl font-black font-tech tracking-wider uppercase text-[#F4F7FB]">
               ADMIN LOGIN
             </h2>
-            <p className="text-xs text-[#A5B4C7] mt-1">
+            <p className="text-xs text-[#A7B5C5] mt-1">
               Enter admin password to manage keys & website
             </p>
           </div>
@@ -1476,7 +1528,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               }}
               placeholder="Enter Admin Password"
               autoFocus
-              className="w-full bg-[#080D14] border border-[#00E5FF]/30 focus:border-[#00E5FF] rounded-xl px-4 py-3 text-sm text-[#F4F9FF] outline-none font-mono-code text-center tracking-wider"
+              className="w-full bg-[#0A111B] border border-[#1B3345] focus:border-[#00CFE8] rounded-xl px-4 py-3 text-sm text-[#F4F7FB] outline-none font-mono-code text-center tracking-wider"
             />
 
             {loginError && (
@@ -1488,21 +1540,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <button
               type="submit"
               disabled={verifyingAuth}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-[#00E5FF] via-[#42BFFF] to-[#167DFF] hover:brightness-110 text-[#05070B] font-tech font-bold tracking-wider uppercase text-sm cursor-pointer shadow-[0_4px_20px_rgba(0,229,255,0.32)] disabled:opacity-50"
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-[#00CFE8] to-[#168BFF] hover:brightness-110 text-[#070B12] font-tech font-bold tracking-wider uppercase text-sm cursor-pointer shadow-[0_4px_16px_rgba(0,207,232,0.28)] disabled:opacity-50"
             >
               {verifyingAuth ? 'OPENING...' : 'LOGIN TO ADMIN'}
             </button>
           </form>
 
-          <div className="my-4 border-t border-[#00E5FF]/20" />
+          <div className="my-4 border-t border-[#1B3345]" />
 
           <button
             type="button"
             onClick={handleGoogleLogin}
             disabled={verifyingAuth}
-            className="w-full bg-[#0A1018] hover:bg-[#101A26] border border-[#00E5FF]/30 text-[#F4F9FF] py-2.5 px-4 rounded-xl text-xs font-medium flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full bg-[#0A111B] hover:bg-[#152334] border border-[#1B3345] text-[#F4F7FB] py-2.5 px-4 rounded-xl text-xs font-medium flex items-center justify-center gap-2 cursor-pointer"
           >
-            <span className="font-bold text-[#00E5FF]">G</span>
+            <span className="font-bold text-[#00CFE8]">G</span>
             <span>Sign in with Google Admin</span>
           </button>
         </div>
@@ -1514,7 +1566,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // CLEAN, SIMPLE & PROFESSIONAL ADMIN DASHBOARD
   // ============================================================================
   return (
-    <div className="fixed inset-0 z-50 bg-[#05070B] text-[#F4F9FF] flex flex-col overflow-hidden select-none animate-fade-in">
+    <div className="fixed inset-0 z-[100] bg-[#070B12] text-[#F4F7FB] flex flex-col overflow-hidden select-none animate-fade-in">
       {/* Toast Notification */}
       {toast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[90] w-[90%] max-w-xs pointer-events-none animate-fade-in">
@@ -2309,6 +2361,198 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
               </div>
 
+              {/* SECTION 5: WEBSITE KEY PURCHASE PLANS (/buy-key) */}
+              <div className="bg-[#0D1520] border border-[#00E5FF]/25 rounded-2xl p-4 space-y-3.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-black font-tech uppercase tracking-wider text-[#00E5FF]">
+                      5. Website Key Purchase Plans (/buy-key)
+                    </h3>
+                    <p className="text-[11px] text-[#A5B4C7] mt-0.5">
+                      Configure plan names, prices (INR), validity, descriptions, and availability for "GET KEY ON WEBSITE".
+                    </p>
+                  </div>
+                  <label className="flex items-center gap-1.5 text-xs text-[#F4F9FF] cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={keySalesEnabled}
+                      onChange={e => setKeySalesEnabled(e.target.checked)}
+                      className="accent-[#00E5FF]"
+                    />
+                    <span>Enable Store</span>
+                  </label>
+                </div>
+
+                <div className="space-y-3">
+                  {keyPlans.map((plan, idx) => (
+                    <div
+                      key={plan.id || idx}
+                      className="bg-[#080D14] border border-[#00E5FF]/25 rounded-xl p-3 space-y-2.5"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-bold font-tech uppercase tracking-wider text-[#00E5FF]">
+                          Plan #{idx + 1}
+                        </span>
+                        <label className="flex items-center gap-1.5 text-[11px] text-[#F4F9FF] cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={plan.available}
+                            onChange={e => {
+                              const checked = e.target.checked;
+                              setKeyPlans(prev =>
+                                prev.map((item, i) =>
+                                  i === idx ? { ...item, available: checked } : item
+                                )
+                              );
+                            }}
+                            className="accent-[#00E5FF]"
+                          />
+                          <span>Available for Purchase</span>
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] text-[#A5B4C7] mb-1">
+                            Plan Name
+                          </label>
+                          <input
+                            type="text"
+                            value={plan.name}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setKeyPlans(prev =>
+                                prev.map((item, i) =>
+                                  i === idx ? { ...item, name: val } : item
+                                )
+                              );
+                            }}
+                            placeholder="e.g. 30 Days Access Key"
+                            className="w-full bg-[#0D1520] border border-[#00E5FF]/25 focus:border-[#00E5FF] rounded-lg px-2.5 py-1.5 text-xs text-[#F4F9FF] outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] text-[#A5B4C7] mb-1">
+                            Price (INR ₹) — leave blank if unconfigured
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={plan.priceINR ?? ''}
+                            onChange={e => {
+                              const raw = e.target.value;
+                              const num = raw === '' ? null : Number(raw);
+                              setKeyPlans(prev =>
+                                prev.map((item, i) =>
+                                  i === idx
+                                    ? {
+                                        ...item,
+                                        priceINR: num,
+                                        available: num !== null && num > 0 ? true : item.available
+                                      }
+                                    : item
+                                )
+                              );
+                            }}
+                            placeholder="e.g. 199"
+                            className="w-full bg-[#0D1520] border border-[#00E5FF]/25 focus:border-[#00E5FF] rounded-lg px-2.5 py-1.5 text-xs font-mono-code text-[#F4F9FF] outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div className="flex gap-1.5">
+                          <div className="flex-1">
+                            <label className="block text-[11px] text-[#A5B4C7] mb-1">
+                              Duration Value
+                            </label>
+                            <input
+                              type="number"
+                              min={1}
+                              value={plan.durationValue ?? ''}
+                              onChange={e => {
+                                const raw = e.target.value;
+                                const num = raw === '' ? null : Number(raw);
+                                setKeyPlans(prev =>
+                                  prev.map((item, i) =>
+                                    i === idx ? { ...item, durationValue: num } : item
+                                  )
+                                );
+                              }}
+                              placeholder="30"
+                              className="w-full bg-[#0D1520] border border-[#00E5FF]/25 focus:border-[#00E5FF] rounded-lg px-2.5 py-1.5 text-xs font-mono-code text-[#F4F9FF] outline-none"
+                            />
+                          </div>
+                          <div className="w-28">
+                            <label className="block text-[11px] text-[#A5B4C7] mb-1">
+                              Unit
+                            </label>
+                            <select
+                              value={plan.durationUnit}
+                              onChange={e => {
+                                const unit = e.target.value as PurchasePlan['durationUnit'];
+                                setKeyPlans(prev =>
+                                  prev.map((item, i) =>
+                                    i === idx ? { ...item, durationUnit: unit } : item
+                                  )
+                                );
+                              }}
+                              className="w-full bg-[#0D1520] border border-[#00E5FF]/25 focus:border-[#00E5FF] rounded-lg px-2 py-1.5 text-xs text-[#F4F9FF] outline-none"
+                            >
+                              <option value="days">Days</option>
+                              <option value="hours">Hours</option>
+                              <option value="minutes">Minutes</option>
+                              <option value="lifetime">Lifetime</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] text-[#A5B4C7] mb-1">
+                            Validity Label
+                          </label>
+                          <input
+                            type="text"
+                            value={plan.validityLabel || ''}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setKeyPlans(prev =>
+                                prev.map((item, i) =>
+                                  i === idx ? { ...item, validityLabel: val } : item
+                                )
+                              );
+                            }}
+                            placeholder="e.g. 30 Days Validity"
+                            className="w-full bg-[#0D1520] border border-[#00E5FF]/25 focus:border-[#00E5FF] rounded-lg px-2.5 py-1.5 text-xs text-[#F4F9FF] outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] text-[#A5B4C7] mb-1">
+                          Short Description
+                        </label>
+                        <input
+                          type="text"
+                          value={plan.description}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setKeyPlans(prev =>
+                              prev.map((item, i) =>
+                                i === idx ? { ...item, description: val } : item
+                              )
+                            );
+                          }}
+                          placeholder="Short plan description..."
+                          className="w-full bg-[#0D1520] border border-[#00E5FF]/25 focus:border-[#00E5FF] rounded-lg px-2.5 py-1.5 text-xs text-[#F4F9FF] outline-none"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {/* ONE BIG SAVE BUTTON FOR ALL SETTINGS */}
               <button
                 type="submit"
@@ -2324,7 +2568,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {/* Simple Modal: Delete Key Confirmation */}
       {deleteTargetKey && (
-        <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+        <div className="fixed inset-0 z-[80] bg-[#070B12] flex items-center justify-center p-4 animate-fade-in">
           <div className="w-full max-w-xs bg-[#0D1520] border border-red-500/50 rounded-2xl p-5 text-center space-y-3">
             <div className="text-base font-black font-tech uppercase text-[#F4F9FF]">
               Delete This Key?
@@ -2355,7 +2599,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {/* Simple Modal: Add Time (+Time) */}
       {renewTargetKey && (
-        <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+        <div className="fixed inset-0 z-[80] bg-[#070B12] flex items-center justify-center p-4 animate-fade-in">
           <form
             onSubmit={handleConfirmRenewKey}
             className="w-full max-w-xs bg-[#0D1520] border border-[#00E5FF]/45 rounded-2xl p-5 space-y-3.5"
