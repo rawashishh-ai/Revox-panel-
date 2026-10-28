@@ -198,7 +198,7 @@ export const AuthorizedDashboard: React.FC<AuthorizedDashboardProps> = ({ keyDat
     circleCircumference - (connectProgress / 100) * circleCircumference;
 
   return (
-    <div className="w-full max-w-[390px] mx-auto select-none flex flex-col gap-3 text-[#F4F7FB] animate-page-fade">
+    <div className="w-full select-none flex flex-col gap-3 text-[#F4F7FB] animate-page-fade">
       
       {/* ========================================================
           FULL-SCREEN 12-SECOND FUTURISTIC CONNECTION ANIMATION

@@ -685,13 +685,13 @@ export default function App() {
   }
 
   return (
-    <div className="relative h-[100dvh] max-h-[100dvh] bg-[#070B12] text-[#F4F7FB] flex flex-col justify-between overflow-hidden select-none">
+    <div className="relative min-h-screen min-h-[100svh] min-h-[100dvh] w-full bg-[#070B12] text-[#F4F7FB] flex flex-col overflow-x-hidden select-none">
       {/* Smooth, clean dark background depth without scanlines or dark muddy vignette */}
       <div className="fixed inset-0 vignette-radial z-0 pointer-events-none" />
 
       {/* Top Header Bar: Language Selector on Left + Gameplay Button on Right */}
-      <header className="relative z-10 w-full max-w-[390px] mx-auto px-4 pt-3 pb-0.5 flex items-center justify-between shrink-0">
-        {/* Left: Language Button (placed where Admin button used to be) */}
+      <header className="relative z-20 revox-shell pt-3 pb-1.5 flex items-center justify-between gap-2 shrink-0">
+        {/* Left: Language Button */}
         <LanguageSelector currentLang={lang} onLanguageChange={setLang} />
 
         {/* Right: Gameplay Button (shown ONLY on the Access Key login page) */}
@@ -706,7 +706,7 @@ export default function App() {
               setManualGameplayView(true);
             }}
             title="Watch Panel Gameplay Video"
-            className="relative overflow-hidden bg-[#101B28] hover:bg-[#152334] active:scale-95 border border-[#1B3345] hover:border-[#00CFE8] text-[#F4F7FB] text-xs font-bold tracking-wider px-3.5 py-1.5 rounded-[4px] flex items-center gap-1.5 cursor-pointer transition-all shadow-[0_3px_11px_rgba(0,0,0,0.48),inset_0_1px_0_rgba(244,247,251,0.1)] hover:shadow-[0_0_13px_rgba(0,207,232,0.22)] font-tech uppercase"
+            className="relative overflow-hidden bg-[#101B28] hover:bg-[#152334] active:scale-95 border border-[#1B3345] hover:border-[#00CFE8] text-[#F4F7FB] text-xs font-bold tracking-wider px-3.5 py-1.5 rounded-[4px] flex items-center gap-1.5 cursor-pointer transition-all shadow-[0_3px_11px_rgba(0,0,0,0.48),inset_0_1px_0_rgba(244,247,251,0.1)] hover:shadow-[0_0_13px_rgba(0,207,232,0.22)] font-tech uppercase shrink-0"
           >
             <span className="absolute top-0 left-2 right-2 h-[1px] bg-gradient-to-r from-transparent via-[#00CFE8]/48 to-transparent pointer-events-none" />
             <span>🎬</span>
@@ -716,14 +716,10 @@ export default function App() {
       </header>
 
       {/* Main Viewport Container */}
-      <main
-        className={`relative z-10 w-full max-w-[390px] mx-auto px-4 py-1 flex-1 flex flex-col justify-between min-h-0 ${
-          showIntroVideoGate ? 'overflow-y-auto' : 'overflow-hidden'
-        }`}
-      >
+      <main className="relative z-10 revox-shell pt-1 pb-4 flex-1 flex flex-col">
         {initialLoading && !settings ? (
           /* Clean Dark Gaming Loading Skeleton */
-          <div className="flex flex-col justify-between h-full py-2 animate-pulse">
+          <div className="w-full my-auto flex flex-col gap-3 py-2 animate-pulse">
             <div className="h-44 w-full bg-[#101B28] border border-[#1B3345] rounded-[4px] p-4 flex flex-col justify-between">
               <div className="h-4 w-1/3 bg-[#152334] rounded" />
               <div className="h-6 w-2/3 bg-[#152334] rounded" />
@@ -735,7 +731,7 @@ export default function App() {
               <div className="h-8 w-full bg-[#152334] rounded" />
             </div>
 
-            <div className="flex items-center justify-center my-4">
+            <div className="flex items-center justify-center my-2">
               <div className="w-28 h-28 rounded-full bg-[#101B28] border border-[#1B3345]" />
             </div>
 
@@ -746,7 +742,7 @@ export default function App() {
             </div>
           </div>
         ) : showIntroVideoGate ? (
-          <div key="page-gameplay" className="flex-1 flex flex-col animate-page-fade">
+          <div key="page-gameplay" className="w-full flex-1 flex flex-col animate-page-fade">
             <IntroVideoScreen
               settings={activeSettings}
               lang={lang}
@@ -762,7 +758,7 @@ export default function App() {
             />
           </div>
         ) : unlockedKeyData ? (
-          <div key="page-dashboard" className="flex-1 flex flex-col justify-start pt-5 overflow-y-auto animate-page-fade">
+          <div key="page-dashboard" className="w-full flex-1 flex flex-col justify-start pt-3 pb-4 animate-page-fade">
             <AuthorizedDashboard
               keyData={unlockedKeyData}
               lang={lang}
@@ -789,20 +785,23 @@ export default function App() {
             />
           </div>
         ) : (
-          <div key="page-home" className="flex flex-col justify-between h-full py-1 animate-page-fade">
-            {/* Announcement Card */}
+          <div
+            key="page-home"
+            className="w-full my-auto flex flex-col gap-2.5 min-[390px]:gap-3 sm:gap-3.5 py-1 animate-page-fade"
+          >
+            {/* 1. Announcement Card (with GET KEY INSTANTLY button inside) */}
             <AnnouncementCard
               settings={activeSettings}
               lang={lang}
               onOpenGetKeyChoice={() => setShowGetKeyChoiceModal(true)}
             />
 
-            {/* Dynamic Center Logo (Secret 3 taps to open admin panel) */}
-            <div onClick={handleLogoSecretClick} className="cursor-default">
+            {/* 2. Dynamic Center Logo (Secret 3 taps to open admin panel) */}
+            <div onClick={handleLogoSecretClick} className="cursor-default w-full">
               <CenterLogo settings={activeSettings} />
             </div>
 
-            {/* Access Key Section */}
+            {/* 3. Access Key Section (Heading, Input, PASTE, UNLOCK, Footer) */}
             <AccessKeyForm
               lang={lang}
               purchasedKey={purchasedKey}

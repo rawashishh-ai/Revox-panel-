@@ -25,17 +25,54 @@
     box-sizing: border-box;
   }
 
-  html, body {
+  html {
     background-color: #070B12;
     color: #F4F7FB;
-    font-family: 'Rajdhani', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: #070B12;
+    color: #F4F7FB;
+    font-family: 'Rajdhani', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.4;
     margin: 0;
     padding: 0;
-    height: 100%;
+    min-height: 100vh;
+    min-height: 100svh;
+    min-height: 100dvh;
     width: 100%;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
     user-select: none;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  #root {
+    min-height: 100vh;
+    min-height: 100svh;
+    min-height: 100dvh;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font-family: inherit;
+    margin: 0;
+  }
+
+  img,
+  video,
+  svg {
+    max-width: 100%;
+    display: block;
   }
 
   button:focus-visible,
@@ -44,6 +81,16 @@
     outline: 2px solid #00CFE8;
     outline-offset: 2px;
   }
+}
+
+/* Responsive Shell Container for 320px - 480px Mobile & Tablet/Desktop */
+.revox-shell {
+  width: 100%;
+  max-width: 420px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: clamp(12px, 3.8vw, 18px);
+  padding-right: clamp(12px, 3.8vw, 18px);
 }
 
 /* Scanlines removed to ensure a smooth, stripe-free background on mobile and desktop */
@@ -208,17 +255,17 @@
     inset 0 1px 1.5px rgba(255, 255, 255, 0.6);
 }
 
-/* Tech Font Families */
+/* Tech Font Families with Cross-Device System Fallbacks */
 .font-tech {
-  font-family: 'Chakra Petch', 'Rajdhani', sans-serif;
+  font-family: 'Chakra Petch', 'Rajdhani', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 .font-rajdhani {
-  font-family: 'Rajdhani', sans-serif;
+  font-family: 'Rajdhani', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 .font-mono-code {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 /* -----------------------------------------------------

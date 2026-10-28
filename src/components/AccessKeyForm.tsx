@@ -389,7 +389,7 @@ export const AccessKeyForm: React.FC<AccessKeyFormProps> = ({
   };
 
   return (
-    <div className="w-full max-w-[390px] mx-auto select-none shrink-0">
+    <div className="w-full select-none shrink-0">
       
       {/* Cinematic Full-screen Verification Overlay */}
       <VerificationOverlay
@@ -400,15 +400,15 @@ export const AccessKeyForm: React.FC<AccessKeyFormProps> = ({
       />
 
       {/* Top informational text */}
-      <div className="text-center text-[#A7B5C5] text-[10px] sm:text-[10.5px] font-semibold tracking-[0.22em] uppercase mb-1.5 font-mono-code">
+      <div className="text-center text-[#A7B5C5] text-[10px] sm:text-[10.5px] font-semibold tracking-[0.16em] min-[375px]:tracking-[0.22em] uppercase mb-1.5 font-mono-code break-words">
         {t.noAccount}
       </div>
 
       {/* Label: ACCESS KEY with cyan square indicator */}
-      <div className="flex items-center justify-between mb-1.5 px-0.5">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 bg-[#00CFE8] shadow-[0_0_6px_rgba(0,207,232,0.8)] inline-block" />
-          <span className="text-[#F4F7FB] text-[10.5px] sm:text-[11px] font-bold tracking-[0.24em] uppercase font-mono-code">
+      <div className="flex flex-wrap items-center justify-between gap-1 mb-1.5 px-0.5">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="w-2 h-2 bg-[#00CFE8] shadow-[0_0_6px_rgba(0,207,232,0.8)] inline-block shrink-0" />
+          <span className="text-[#F4F7FB] text-[10.5px] sm:text-[11px] font-bold tracking-[0.2em] sm:tracking-[0.24em] uppercase font-mono-code">
             {t.accessKey}
           </span>
         </div>
@@ -419,7 +419,7 @@ export const AccessKeyForm: React.FC<AccessKeyFormProps> = ({
         )}
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-2">
+      <form onSubmit={handleSubmit} className="space-y-2.5">
         {/* Input container with 1px chamfered border (#1B3345 -> #00CFE8 on focus), #0A111B input surface & #101B28 PASTE button */}
         <div 
           className={`relative p-[1px] ${
@@ -428,7 +428,7 @@ export const AccessKeyForm: React.FC<AccessKeyFormProps> = ({
               : 'bg-gradient-to-r from-[#00CFE8]/45 via-[#1B3345] to-[#168BFF]/45 focus-within:from-[#00CFE8] focus-within:via-[#00CFE8]/85 focus-within:to-[#168BFF] shadow-[0_6px_18px_-8px_rgba(0,0,0,0.65)] focus-within:shadow-[0_0_16px_rgba(0,207,232,0.26)]'
           } clip-input-box transition-all duration-200`}
         >
-          <div className="relative bg-[#0A111B] clip-input-box flex items-center justify-between px-3 py-1.5 shadow-[inset_0_2px_6px_rgba(0,0,0,0.65)]">
+          <div className="relative bg-[#0A111B] clip-input-box flex items-center justify-between gap-2 px-2.5 min-[360px]:px-3 py-1.5 shadow-[inset_0_2px_6px_rgba(0,0,0,0.65)]">
             <span className="absolute top-0 left-4 right-4 h-[1px] bg-gradient-to-r from-transparent via-[#00CFE8]/36 to-transparent pointer-events-none" />
             <input
               type="text"
@@ -440,7 +440,7 @@ export const AccessKeyForm: React.FC<AccessKeyFormProps> = ({
               placeholder="RVX-XXXX-XXXX-XXXX"
               autoComplete="off"
               spellCheck="false"
-              className="w-full bg-transparent text-[#F4F7FB] placeholder-[#A7B5C5]/55 text-sm sm:text-[15px] font-mono-code font-bold tracking-widest py-1.5 outline-none focus-visible:outline-none min-w-0"
+              className="flex-1 min-w-0 w-full bg-transparent text-[#F4F7FB] placeholder-[#A7B5C5]/55 text-[clamp(13px,3.8vw,15px)] font-mono-code font-bold tracking-[0.08em] min-[375px]:tracking-widest py-1.5 outline-none focus-visible:outline-none"
             />
 
             <button
@@ -448,7 +448,7 @@ export const AccessKeyForm: React.FC<AccessKeyFormProps> = ({
               onClick={handlePaste}
               disabled={loading}
               title="Paste from clipboard"
-              className="relative bg-[#101B28] hover:bg-[#152334] active:scale-95 text-[#F4F7FB] text-[10.5px] sm:text-[11px] font-bold tracking-[0.16em] uppercase py-1.5 px-3.5 shrink-0 clip-paste-btn font-tech transition-all cursor-pointer border border-[#1B3345] hover:border-[#00CFE8] shadow-[0_2px_8px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(244,247,251,0.1)] hover:shadow-[0_0_11px_rgba(0,207,232,0.22)]"
+              className="relative bg-[#101B28] hover:bg-[#152334] active:scale-95 text-[#F4F7FB] text-[10.5px] sm:text-[11px] font-bold tracking-[0.14em] sm:tracking-[0.16em] uppercase py-1.5 px-3 min-[360px]:px-3.5 shrink-0 clip-paste-btn font-tech transition-all cursor-pointer border border-[#1B3345] hover:border-[#00CFE8] shadow-[0_2px_8px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(244,247,251,0.1)] hover:shadow-[0_0_11px_rgba(0,207,232,0.22)]"
             >
               {pasteFeedback ? t.pasted : t.paste}
             </button>
@@ -459,7 +459,7 @@ export const AccessKeyForm: React.FC<AccessKeyFormProps> = ({
         <button
           type="submit"
           disabled={loading}
-          className="relative w-full cyber-primary-btn hover:brightness-108 active:scale-[0.985] text-[#070B12] py-2.5 sm:py-3 px-6 clip-unlock-btn font-tech font-black text-lg sm:text-xl tracking-[0.18em] uppercase transition-all duration-150 cursor-pointer flex items-center justify-center gap-2 disabled:opacity-75 disabled:cursor-not-allowed border-t border-white/60 overflow-hidden group"
+          className="relative w-full cyber-primary-btn hover:brightness-108 active:scale-[0.985] text-[#070B12] py-2.5 sm:py-3 px-5 clip-unlock-btn font-tech font-black text-[clamp(17px,4.6vw,20px)] tracking-[0.16em] sm:tracking-[0.18em] uppercase transition-all duration-150 cursor-pointer flex items-center justify-center gap-2 disabled:opacity-75 disabled:cursor-not-allowed border-t border-white/60 overflow-hidden group"
         >
           {/* Top-Half Glossy Reflection */}
           <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/25 to-transparent pointer-events-none" />
@@ -477,11 +477,11 @@ export const AccessKeyForm: React.FC<AccessKeyFormProps> = ({
       </form>
 
       {/* Bottom informational text with clear readability */}
-      <div className="text-center mt-1.5 space-y-0.5">
-        <div className="text-[#A7B5C5] text-[10px] font-mono-code tracking-wide">
+      <div className="text-center mt-2 space-y-0.5 pb-1">
+        <div className="text-[#A7B5C5] text-[10px] font-mono-code tracking-wide break-words">
           {t.timeStarts}
         </div>
-        <div className="text-[#F4F7FB]/90 text-[10.5px] font-sans font-medium">
+        <div className="text-[#F4F7FB]/90 text-[10.5px] font-sans font-medium break-words">
           {t.noKey}
         </div>
       </div>
