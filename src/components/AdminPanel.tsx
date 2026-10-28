@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { SiteSettings, AccessKey, AdminAuditLog, PurchasePlan } from '../types';
-import { resolveConfiguredKeyPlans } from '../config/purchaseConfig';
+import { SiteSettings, AccessKey, AdminAuditLog, PurchasePlan, GetKeyPurchaseMode } from '../types';
+import {
+  resolveConfiguredKeyPlans,
+  resolveGetKeyMode,
+  DEFAULT_CONFIGURABLE_KEY_PLANS
+} from '../config/purchaseConfig';
 import { auth, googleProvider, db, storage } from '../firebase';
 import { signInWithPopup, signOut } from 'firebase/auth';
 import { doc, setDoc, getDocs, collection, deleteDoc, updateDoc, query, where } from 'firebase/firestore';
@@ -117,8 +121,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // Key Generator State
   const [genCustomerName, setGenCustomerName] = useState('');
-  const [genDurationValue, setGenDurationValue] = useState<string>('30');
-  const [genDurationUnit, setGenDurationUnit] = useState<'minutes' | 'hours' | 'days'>('days');
+  const [genDurationValue, setGenDurationValue] = useState<string>('7');
+  const [genDurationUnit, setGenDurationUnit] = useState<'minutes' | 'hours' | 'days' | 'lifetime'>('days');
   const [genCustomCount, setGenCustomCount] = useState<string>('1');
   const [genNotes, setGenNotes] = useState('');
   const [generating, setGenerating] = useState(false);
@@ -208,6 +212,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [keySalesEnabled, setKeySalesEnabled] = useState<boolean>(
     currentSettings.keySalesEnabled !== false
   );
+  const [getKeyMode, setGetKeyMode] = useState<GetKeyPurchaseMode>(() =>
+    resolveGetKeyMode(currentSettings)
+  );
   const [keyPlans, setKeyPlans] = useState<PurchasePlan[]>(() =>
     resolveConfiguredKeyPlans(currentSettings)
   );
@@ -243,6 +250,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         : true
     );
     setKeySalesEnabled(currentSettings.keySalesEnabled !== false);
+    setGetKeyMode(resolveGetKeyMode(currentSettings));
     setKeyPlans(resolveConfiguredKeyPlans(currentSettings));
   }, [currentSettings.version, currentSettings.logoUrl, currentSettings.introVideoUrl]);
 
@@ -546,8 +554,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setGenError(null);
 
     const cleanCustomer = genCustomerName.trim() || 'Customer';
-    const durNum = Number(genDurationValue);
-    if (!Number.isFinite(durNum) || durNum <= 0) {
+    const durNum = genDurationUnit === 'lifetime' ? 0 : Number(genDurationValue);
+    if (genDurationUnit !== 'lifetime' && (!Number.isFinite(durNum) || durNum <= 0)) {
       setGenError('Enter a valid duration number');
       return;
     }
@@ -598,7 +606,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
         let durationMs = 0;
         let durationDays = 0;
-        if (genDurationUnit === 'minutes') {
+        if (genDurationUnit === 'lifetime') {
+          durationMs = 0;
+          durationDays = 0;
+        } else if (genDurationUnit === 'minutes') {
           durationMs = Math.max(1, durNum) * 60 * 1000;
           durationDays = Number((durNum / (60 * 24)).toFixed(4));
         } else if (genDurationUnit === 'hours') {
@@ -618,7 +629,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             customerName: cleanCustomer,
             durationDays,
             durationUnit: genDurationUnit,
-            durationValue: durNum,
+            durationValue: genDurationUnit === 'lifetime' ? 0 : durNum,
             durationMs,
             status: 'active',
             createdAt: nowIso,
@@ -1363,6 +1374,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
+  const handleQuickChangeGetKeyMode = async (newMode: GetKeyPurchaseMode) => {
+    setGetKeyMode(newMode);
+    try {
+      await persistSettingsAuthoritatively({
+        getKeyMode: newMode,
+        buttonSettings: {
+          ...currentSettings.buttonSettings,
+          getKeyMode: newMode
+        }
+      });
+      const modeLabel =
+        newMode === 'website'
+          ? 'Website Only (/buy-key)'
+          : newMode === 'whatsapp'
+          ? 'Direct WhatsApp Only'
+          : 'Both (Website & WhatsApp)';
+      showToast(`GET KEY Mode: ${modeLabel}`, 'success');
+    } catch {
+      showToast('Failed to update GET KEY mode', 'error');
+    }
+  };
+
   const handleSaveAllWebsiteSettings = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (savingAllSettings) return;
@@ -1433,20 +1466,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           currency: 'INR',
           durationValue: parsedDur,
           durationUnit: p.durationUnit || 'days',
-          validityLabel: (p.validityLabel || '').trim(),
+          validityLabel: (p.validityLabel || '').trim() || (p.durationUnit === 'lifetime' ? 'Permanent' : `${parsedDur || 7} Days`),
           description: (p.description || '').trim(),
-          available: Boolean(p.available && parsedPrice && parsedPrice > 0)
+          available: Boolean(
+            p.available &&
+              parsedPrice &&
+              parsedPrice > 0 &&
+              (p.durationUnit === 'lifetime' || (parsedDur && parsedDur > 0))
+          )
         };
       });
 
       const firstConfiguredPlan = sanitizedPlans.find(
         p => p.available && typeof p.priceINR === 'number' && p.priceINR > 0
       );
-      const primaryPrice = firstConfiguredPlan?.priceINR ?? currentSettings.keyPriceINR ?? 199;
+      const primaryPrice = firstConfiguredPlan?.priceINR ?? currentSettings.keyPriceINR ?? 99;
       const primaryDurationDays =
         firstConfiguredPlan && firstConfiguredPlan.durationUnit === 'days' && firstConfiguredPlan.durationValue
           ? firstConfiguredPlan.durationValue
-          : currentSettings.keySaleDurationDays ?? 30;
+          : currentSettings.keySaleDurationDays ?? 7;
 
       await persistSettingsAuthoritatively({
         websiteTitle: cleanName,
@@ -1467,6 +1505,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         downloadHackUrl: cleanDownload,
         setupVideoUrl: cleanSetup,
         keySalesEnabled,
+        getKeyMode,
         keyPriceINR: primaryPrice,
         keySaleDurationDays: primaryDurationDays,
         keyPlans: sanitizedPlans,
@@ -1478,8 +1517,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           downloadHackUrl: cleanDownload,
           setupVideoUrl: cleanSetup,
           keySalesEnabled,
+          getKeyMode,
           keyPriceINR: primaryPrice,
-          keySaleDurationDays: primaryDurationDays
+          keySaleDurationDays: primaryDurationDays,
+          keyPlans: sanitizedPlans
         }
       });
 
@@ -1759,18 +1800,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   {/* 2. Quick Duration Buttons */}
                   <div>
                     <label className="block text-xs font-bold text-[#F4F9FF] mb-1.5">
-                      2. Select Validity Time
+                      2. Select Validity Time (💎 Key Plans)
                     </label>
                     <div className="grid grid-cols-5 gap-1.5 mb-2.5">
                       {[
-                        { label: '1Hr', val: '1', unit: 'hours' as const },
-                        { label: '12Hr', val: '12', unit: 'hours' as const },
-                        { label: '1 Day', val: '1', unit: 'days' as const },
                         { label: '7 Days', val: '7', unit: 'days' as const },
-                        { label: '30 Days', val: '30', unit: 'days' as const }
+                        { label: '12 Days', val: '12', unit: 'days' as const },
+                        { label: '21 Days', val: '21', unit: 'days' as const },
+                        { label: '30 Days', val: '30', unit: 'days' as const },
+                        { label: 'Permanent', val: '0', unit: 'lifetime' as const }
                       ].map(p => {
                         const isSelected =
-                          genDurationValue === p.val && genDurationUnit === p.unit;
+                          (p.unit === 'lifetime' && genDurationUnit === 'lifetime') ||
+                          (p.unit !== 'lifetime' &&
+                            genDurationValue === p.val &&
+                            genDurationUnit === p.unit);
                         return (
                           <button
                             key={p.label}
@@ -1779,7 +1823,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               setGenDurationValue(p.val);
                               setGenDurationUnit(p.unit);
                             }}
-                            className={`py-2 rounded-lg font-mono-code font-bold text-xs border cursor-pointer transition-all ${
+                            className={`py-2 rounded-lg font-mono-code font-bold text-[11px] border cursor-pointer transition-all ${
                               isSelected
                                 ? 'bg-[#00E5FF] border-[#42BFFF] text-[#05070B]'
                                 : 'bg-[#080D14] border-[#00E5FF]/25 text-[#A5B4C7] hover:text-[#F4F9FF]'
@@ -1797,24 +1841,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         type="number"
                         min={1}
                         max={9999}
-                        value={genDurationValue}
+                        disabled={genDurationUnit === 'lifetime'}
+                        value={genDurationUnit === 'lifetime' ? '' : genDurationValue}
                         onChange={e => setGenDurationValue(e.target.value)}
-                        placeholder="Duration"
-                        className="col-span-5 bg-[#080D14] border border-[#00E5FF]/30 focus:border-[#00E5FF] rounded-xl px-3.5 py-2.5 text-sm font-mono-code text-[#F4F9FF] outline-none"
+                        placeholder={genDurationUnit === 'lifetime' ? 'Permanent' : 'Duration'}
+                        className="col-span-4 bg-[#080D14] border border-[#00E5FF]/30 focus:border-[#00E5FF] rounded-xl px-3 py-2.5 text-sm font-mono-code text-[#F4F9FF] outline-none disabled:opacity-50"
                       />
-                      <div className="col-span-7 grid grid-cols-3 gap-1.5">
-                        {(['minutes', 'hours', 'days'] as const).map(unit => (
+                      <div className="col-span-8 grid grid-cols-4 gap-1">
+                        {(['minutes', 'hours', 'days', 'lifetime'] as const).map(unit => (
                           <button
                             key={unit}
                             type="button"
-                            onClick={() => setGenDurationUnit(unit)}
-                            className={`py-2.5 rounded-xl font-tech font-bold text-xs uppercase border cursor-pointer ${
+                            onClick={() => {
+                              setGenDurationUnit(unit);
+                              if (unit !== 'lifetime' && (!genDurationValue || genDurationValue === '0')) {
+                                setGenDurationValue('7');
+                              }
+                            }}
+                            className={`py-2.5 rounded-xl font-tech font-bold text-[11px] uppercase border cursor-pointer ${
                               genDurationUnit === unit
                                 ? 'bg-[#00E5FF]/20 border-[#00E5FF] text-[#F4F9FF]'
                                 : 'bg-[#080D14] border-[#00E5FF]/25 text-[#A5B4C7]'
                             }`}
                           >
-                            {unit}
+                            {unit === 'lifetime' ? 'PERM' : unit}
                           </button>
                         ))}
                       </div>
@@ -2296,11 +2346,102 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
               </div>
 
-              {/* SECTION 3: WHATSAPP & HOME CARD */}
-              <div className="bg-[#0D1520] border border-[#00E5FF]/25 rounded-2xl p-4 space-y-3.5">
+              {/* SECTION 3: WHATSAPP, "GET KEY" PURCHASE MODE & HOME CARD */}
+              <div className="bg-[#0D1520] border border-[#00E5FF]/25 rounded-2xl p-4 space-y-4">
                 <h3 className="text-sm font-black font-tech uppercase tracking-wider text-[#00E5FF]">
-                  3. WhatsApp Number & Home Notice
+                  3. "GET KEY" Button Mode & WhatsApp Settings
                 </h3>
+
+                {/* Customer GET KEY Purchase Mode Selector (Website / WhatsApp / Both) */}
+                <div className="bg-[#080D14] border border-[#00E5FF]/35 rounded-xl p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-xs font-bold text-[#F4F9FF] uppercase font-tech tracking-wider">
+                        🔑 Customer "GET KEY" Option Mode
+                      </div>
+                      <p className="text-[11px] text-[#A5B4C7] mt-0.5">
+                        Choose where customers go when they click "GET KEY" (Website Only, Direct WhatsApp Only, or Both options).
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                    {/* Option 1: BOTH (Website + WhatsApp) */}
+                    <button
+                      type="button"
+                      onClick={() => handleQuickChangeGetKeyMode('both')}
+                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                        getKeyMode === 'both'
+                          ? 'bg-[#00E5FF]/15 border-[#00E5FF] text-[#F4F9FF] shadow-[0_0_15px_rgba(0,229,255,0.2)]'
+                          : 'bg-[#0D1520] border-[#00E5FF]/20 text-[#A5B4C7] hover:text-[#F4F9FF]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1 mb-1">
+                        <span className="text-xs font-black font-tech uppercase tracking-wider text-[#00E5FF]">
+                          🌐 + 💬 BOTH
+                        </span>
+                        {getKeyMode === 'both' && (
+                          <span className="px-1.5 py-0.5 rounded bg-[#00E5FF] text-[#05070B] text-[9px] font-bold uppercase">
+                            ACTIVE
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] leading-snug">
+                        Website & WhatsApp (Customer chooses either)
+                      </div>
+                    </button>
+
+                    {/* Option 2: WEBSITE ONLY */}
+                    <button
+                      type="button"
+                      onClick={() => handleQuickChangeGetKeyMode('website')}
+                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                        getKeyMode === 'website'
+                          ? 'bg-[#00E5FF]/15 border-[#00E5FF] text-[#F4F9FF] shadow-[0_0_15px_rgba(0,229,255,0.2)]'
+                          : 'bg-[#0D1520] border-[#00E5FF]/20 text-[#A5B4C7] hover:text-[#F4F9FF]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1 mb-1">
+                        <span className="text-xs font-black font-tech uppercase tracking-wider text-[#42BFFF]">
+                          🌐 WEBSITE ONLY
+                        </span>
+                        {getKeyMode === 'website' && (
+                          <span className="px-1.5 py-0.5 rounded bg-[#00E5FF] text-[#05070B] text-[9px] font-bold uppercase">
+                            ACTIVE
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] leading-snug">
+                        Direct to Website Plans & UPI QR Checkout
+                      </div>
+                    </button>
+
+                    {/* Option 3: DIRECT WHATSAPP ONLY */}
+                    <button
+                      type="button"
+                      onClick={() => handleQuickChangeGetKeyMode('whatsapp')}
+                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                        getKeyMode === 'whatsapp'
+                          ? 'bg-emerald-500/15 border-emerald-400 text-[#F4F9FF] shadow-[0_0_15px_rgba(16,185,129,0.2)]'
+                          : 'bg-[#0D1520] border-[#00E5FF]/20 text-[#A5B4C7] hover:text-[#F4F9FF]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1 mb-1">
+                        <span className="text-xs font-black font-tech uppercase tracking-wider text-emerald-400">
+                          💬 WHATSAPP ONLY
+                        </span>
+                        {getKeyMode === 'whatsapp' && (
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-[#05070B] text-[9px] font-bold uppercase">
+                            ACTIVE
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] leading-snug">
+                        Direct "GET KEY" on WhatsApp Chat Only
+                      </div>
+                    </button>
+                  </div>
+                </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-[#F4F9FF] mb-1">
@@ -2363,24 +2504,36 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
               {/* SECTION 5: WEBSITE KEY PURCHASE PLANS (/buy-key) */}
               <div className="bg-[#0D1520] border border-[#00E5FF]/25 rounded-2xl p-4 space-y-3.5">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <h3 className="text-sm font-black font-tech uppercase tracking-wider text-[#00E5FF]">
-                      5. Website Key Purchase Plans (/buy-key)
+                      5. 💎 KEY PRICES & Purchase Plans (/buy-key)
                     </h3>
                     <p className="text-[11px] text-[#A5B4C7] mt-0.5">
-                      Configure plan names, prices (INR), validity, descriptions, and availability for "GET KEY ON WEBSITE".
+                      7 Days (₹99) · 12 Days (₹149) · 21 Days (₹249) · 30 Days (₹299) · Permanent (₹499)
                     </p>
                   </div>
-                  <label className="flex items-center gap-1.5 text-xs text-[#F4F9FF] cursor-pointer shrink-0">
-                    <input
-                      type="checkbox"
-                      checked={keySalesEnabled}
-                      onChange={e => setKeySalesEnabled(e.target.checked)}
-                      className="accent-[#00E5FF]"
-                    />
-                    <span>Enable Store</span>
-                  </label>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setKeyPlans(DEFAULT_CONFIGURABLE_KEY_PLANS.map(p => ({ ...p })));
+                        showToast('Reset to Official 5 Key Plans! Click Save below.', 'info');
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg bg-[#080D14] hover:bg-[#111C2B] border border-[#00E5FF]/35 text-[11px] font-bold text-[#00E5FF] cursor-pointer"
+                    >
+                      ↺ Reset 5 Default Plans
+                    </button>
+                    <label className="flex items-center gap-1.5 text-xs text-[#F4F9FF] cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={keySalesEnabled}
+                        onChange={e => setKeySalesEnabled(e.target.checked)}
+                        className="accent-[#00E5FF]"
+                      />
+                      <span>Enable Store</span>
+                    </label>
+                  </div>
                 </div>
 
                 <div className="space-y-3">
@@ -2391,7 +2544,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-xs font-bold font-tech uppercase tracking-wider text-[#00E5FF]">
-                          Plan #{idx + 1}
+                          💳 Plan #{idx + 1}: {plan.name}
                         </span>
                         <label className="flex items-center gap-1.5 text-[11px] text-[#F4F9FF] cursor-pointer">
                           <input
@@ -2427,14 +2580,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 )
                               );
                             }}
-                            placeholder="e.g. 30 Days Access Key"
+                            placeholder="e.g. 7 DAYS ACCESS KEY"
                             className="w-full bg-[#0D1520] border border-[#00E5FF]/25 focus:border-[#00E5FF] rounded-lg px-2.5 py-1.5 text-xs text-[#F4F9FF] outline-none"
                           />
                         </div>
 
                         <div>
                           <label className="block text-[11px] text-[#A5B4C7] mb-1">
-                            Price (INR ₹) — leave blank if unconfigured
+                            Price (INR ₹)
                           </label>
                           <input
                             type="number"
@@ -2455,7 +2608,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 )
                               );
                             }}
-                            placeholder="e.g. 199"
+                            placeholder="e.g. 99"
                             className="w-full bg-[#0D1520] border border-[#00E5FF]/25 focus:border-[#00E5FF] rounded-lg px-2.5 py-1.5 text-xs font-mono-code text-[#F4F9FF] outline-none"
                           />
                         </div>
@@ -2469,8 +2622,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             </label>
                             <input
                               type="number"
-                              min={1}
-                              value={plan.durationValue ?? ''}
+                              min={0}
+                              disabled={plan.durationUnit === 'lifetime'}
+                              value={plan.durationUnit === 'lifetime' ? '' : (plan.durationValue ?? '')}
                               onChange={e => {
                                 const raw = e.target.value;
                                 const num = raw === '' ? null : Number(raw);
@@ -2480,8 +2634,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                   )
                                 );
                               }}
-                              placeholder="30"
-                              className="w-full bg-[#0D1520] border border-[#00E5FF]/25 focus:border-[#00E5FF] rounded-lg px-2.5 py-1.5 text-xs font-mono-code text-[#F4F9FF] outline-none"
+                              placeholder={plan.durationUnit === 'lifetime' ? 'Permanent' : '7'}
+                              className="w-full bg-[#0D1520] border border-[#00E5FF]/25 focus:border-[#00E5FF] rounded-lg px-2.5 py-1.5 text-xs font-mono-code text-[#F4F9FF] outline-none disabled:opacity-50"
                             />
                           </div>
                           <div className="w-28">
@@ -2494,7 +2648,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 const unit = e.target.value as PurchasePlan['durationUnit'];
                                 setKeyPlans(prev =>
                                   prev.map((item, i) =>
-                                    i === idx ? { ...item, durationUnit: unit } : item
+                                    i === idx
+                                      ? {
+                                          ...item,
+                                          durationUnit: unit,
+                                          validityLabel:
+                                            unit === 'lifetime'
+                                              ? 'Permanent'
+                                              : item.validityLabel
+                                        }
+                                      : item
                                   )
                                 );
                               }}
@@ -2503,7 +2666,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               <option value="days">Days</option>
                               <option value="hours">Hours</option>
                               <option value="minutes">Minutes</option>
-                              <option value="lifetime">Lifetime</option>
+                              <option value="lifetime">Permanent</option>
                             </select>
                           </div>
                         </div>
@@ -2523,7 +2686,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 )
                               );
                             }}
-                            placeholder="e.g. 30 Days Validity"
+                            placeholder="e.g. 7 Days"
                             className="w-full bg-[#0D1520] border border-[#00E5FF]/25 focus:border-[#00E5FF] rounded-lg px-2.5 py-1.5 text-xs text-[#F4F9FF] outline-none"
                           />
                         </div>

@@ -30,6 +30,9 @@ type VerificationBannerState =
 type PaymentAnimationMode = 'NONE' | 'SUCCESS' | 'NOT_VERIFIED';
 type NotVerifiedReason = 'PENDING' | 'FAILED' | 'NETWORK_ERROR';
 
+const QR_VALIDITY_DURATION_MS = 5 * 60 * 1000; // 5 minutes in ms
+const QR_VALIDITY_SECONDS = 300; // 5 minutes in seconds
+
 export const CheckoutPage: React.FC<CheckoutPageProps> = ({
   settings,
   selectedPlan,
@@ -38,17 +41,24 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
   onNavigateToKeySuccess
 }) => {
   const [activeOrderId, setActiveOrderId] = useState<string>(initialOrderId || '');
-  const [paymentSessionId, setPaymentSessionId] = useState<string>('');
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
+  const [upiIntentUrl, setUpiIntentUrl] = useState<string>('');
+  const [reconUrl, setReconUrl] = useState<string>('');
   const [cashfreeMode, setCashfreeMode] = useState<'production' | 'sandbox'>('production');
   const [gatewayConfigured, setGatewayConfigured] = useState<boolean>(true);
   const [missingCredentials, setMissingCredentials] = useState<string[]>([]);
   const [gatewayChecking, setGatewayChecking] = useState<boolean>(true);
 
-  const [checkoutOpening, setCheckoutOpening] = useState<boolean>(false);
+  const [qrLoading, setQrLoading] = useState<boolean>(false);
   const [verifying, setVerifying] = useState<boolean>(false);
   const [bannerState, setBannerState] = useState<VerificationBannerState>('IDLE');
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [hasAttemptedVerification, setHasAttemptedVerification] = useState<boolean>(false);
+
+  // Strict 5-Minute QR Validity State
+  const [qrExpiresAtMs, setQrExpiresAtMs] = useState<number | null>(null);
+  const [qrRemainingSeconds, setQrRemainingSeconds] = useState<number>(QR_VALIDITY_SECONDS);
+  const [qrExpired, setQrExpired] = useState<boolean>(false);
 
   const [verifiedOrder, setVerifiedOrder] = useState<PaymentOrder | null>(null);
 
@@ -60,7 +70,8 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
 
   const animationTimersRef = useRef<number[]>([]);
   const isAnimatingRef = useRef<boolean>(false);
-  const autoVerifiedInitialOrderRef = useRef<string | null>(null);
+  const orderInitKeyRef = useRef<string | null>(null);
+  const pollBusyRef = useRef<boolean>(false);
 
   const logoSrc =
     settings.logoUrl && settings.logoUrl.trim() !== ''
@@ -202,9 +213,13 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     [clearAnimationTimers, onNavigateToKeySuccess]
   );
 
-  // Trigger the 7-Second Payment Not Verified Animation, then return to payment page with "VERIFY PAYMENT AGAIN"
+  // Trigger the 7-Second Payment Not Verified Animation, then return to QR payment page with "CHECK PAYMENT AGAIN"
   const startNotVerifiedAnimationFlow = useCallback(
-    (reason: NotVerifiedReason, finalBannerState: VerificationBannerState, finalMessage: string) => {
+    (
+      reason: NotVerifiedReason,
+      finalBannerState: VerificationBannerState,
+      finalMessage: string
+    ) => {
       if (isAnimatingRef.current) return;
       isAnimatingRef.current = true;
       clearAnimationTimers();
@@ -229,7 +244,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
         setAnimationStage(4);
       }, 5000);
 
-      // Exactly 7.0s: Return customer to payment page and display "VERIFY PAYMENT AGAIN"
+      // Exactly 7.0s: Return customer to QR payment page and display "CHECK PAYMENT AGAIN"
       const t4 = window.setTimeout(() => {
         isAnimatingRef.current = false;
         setAnimationMode('NONE');
@@ -274,38 +289,164 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     };
   }, []);
 
+  // Create (or reuse active) Cashfree order and retrieve official Cashfree UPI QR code & UPI intent link
+  const initializeDirectQrOrder = useCallback(
+    async (forceNew = false) => {
+      if (
+        !selectedPlan ||
+        qrLoading ||
+        isAnimatingRef.current ||
+        animationMode !== 'NONE' ||
+        bannerState === 'SUCCESS'
+      ) {
+        return;
+      }
+
+      setQrLoading(true);
+      if (forceNew) {
+        setQrExpired(false);
+        setBannerState('IDLE');
+        setStatusMessage('');
+      }
+
+      try {
+        const response = await fetch('/api/payments/create-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            planId: selectedPlan.id,
+            reuseOrderId: forceNew ? undefined : activeOrderId || undefined,
+            forceNew
+          })
+        });
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok || !data.success || !data.order_id || !data.qr_code_data_url) {
+          setQrLoading(false);
+          if (data.code === 'CASHFREE_NOT_CONFIGURED') {
+            setGatewayConfigured(false);
+            if (Array.isArray(data.missingCredentials)) {
+              setMissingCredentials(data.missingCredentials);
+            }
+          }
+          setBannerState('FAILED');
+          setStatusMessage(
+            data.message || 'Unable to generate Cashfree UPI QR code. Please try again.'
+          );
+          return;
+        }
+
+        const createdOrderId = String(data.order_id);
+        const resolvedMode: 'production' | 'sandbox' =
+          data.cashfree_mode === 'sandbox' ? 'sandbox' : 'production';
+
+        // Calculate exact 5-minute expiry timestamp
+        const rawExpiry = data.expires_at || data.order?.expiresAt;
+        const parsedExpiryMs = rawExpiry ? new Date(rawExpiry).getTime() : NaN;
+        const maxAllowedExpiryMs = Date.now() + QR_VALIDITY_DURATION_MS;
+        const resolvedExpiryMs =
+          Number.isFinite(parsedExpiryMs) && parsedExpiryMs > Date.now()
+            ? Math.min(parsedExpiryMs, maxAllowedExpiryMs)
+            : maxAllowedExpiryMs;
+        const initialSecs = Math.max(
+          1,
+          Math.min(QR_VALIDITY_SECONDS, Math.ceil((resolvedExpiryMs - Date.now()) / 1000))
+        );
+
+        setActiveOrderId(createdOrderId);
+        setCashfreeMode(resolvedMode);
+        setQrCodeDataUrl(String(data.qr_code_data_url));
+        setQrExpiresAtMs(resolvedExpiryMs);
+        setQrRemainingSeconds(initialSecs);
+        setQrExpired(false);
+        setUpiIntentUrl(
+          typeof data.upi_intent_url === 'string' ? data.upi_intent_url.trim() : ''
+        );
+        setReconUrl(typeof data.recon_url === 'string' ? data.recon_url.trim() : '');
+        if (data.order) {
+          setVerifiedOrder(data.order);
+        }
+        setBannerState('IDLE');
+        setStatusMessage('');
+      } catch {
+        setBannerState('NETWORK_ERROR');
+        setStatusMessage(
+          'Unable to connect to Cashfree payment gateway. Please try again.'
+        );
+      } finally {
+        setQrLoading(false);
+      }
+    },
+    [activeOrderId, animationMode, bannerState, qrLoading, selectedPlan]
+  );
+
   // Authoritative backend Cashfree payment verification
+  // silent = true is used by automatic background polling so it never interrupts the user while scanning
   const verifyCashfreeOrder = useCallback(
-    async (orderIdToVerify: string) => {
+    async (orderIdToVerify: string, silent = false) => {
       const cleanOrderId = (orderIdToVerify || activeOrderId || '').trim();
       if (!cleanOrderId) {
-        startNotVerifiedAnimationFlow(
-          'FAILED',
-          'FAILED',
-          'We could not verify your payment. Please try again.'
-        );
+        if (!silent) {
+          startNotVerifiedAnimationFlow(
+            'FAILED',
+            'FAILED',
+            'We could not verify your payment. Please try again.'
+          );
+        }
         return;
       }
 
       if (verifying || isAnimatingRef.current) return;
+      if (silent && pollBusyRef.current) return;
 
-      setVerifying(true);
-      setBannerState('PROCESSING');
-      setStatusMessage('Verifying your payment with Cashfree...');
+      if (silent) {
+        pollBusyRef.current = true;
+      } else {
+        setVerifying(true);
+        setBannerState('PROCESSING');
+        setStatusMessage('Checking payment status with Cashfree...');
+      }
 
       try {
-        const response = await fetch('/api/payments/verify-status', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orderId: cleanOrderId })
-        });
+        const response = await fetch(
+          silent
+            ? `/api/payments/order-status/${encodeURIComponent(cleanOrderId)}`
+            : '/api/payments/verify-status',
+          silent
+            ? { method: 'GET', cache: 'no-store' }
+            : {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orderId: cleanOrderId })
+              }
+        );
 
         const result = await response.json().catch(() => ({}));
 
         if (result.order) {
           setVerifiedOrder(result.order);
-          if (result.order.paymentSessionId) {
-            setPaymentSessionId(result.order.paymentSessionId);
+          if (result.order.cashfreeQrCode && !qrCodeDataUrl && !qrExpired) {
+            setQrCodeDataUrl(result.order.cashfreeQrCode);
+          }
+          if (!qrExpiresAtMs && (result.order.expiresAt || result.order.purchasedAt)) {
+            const expMs = result.order.expiresAt
+              ? new Date(result.order.expiresAt).getTime()
+              : new Date(result.order.purchasedAt).getTime() + QR_VALIDITY_DURATION_MS;
+            if (Number.isFinite(expMs)) {
+              setQrExpiresAtMs(expMs);
+              const secsLeft = Math.max(0, Math.ceil((expMs - Date.now()) / 1000));
+              setQrRemainingSeconds(secsLeft);
+              if (secsLeft <= 0 && result.payment_status !== 'SUCCESS') {
+                setQrExpired(true);
+              }
+            }
+          }
+          if (result.order.upiIntentUrl && !upiIntentUrl) {
+            setUpiIntentUrl(result.order.upiIntentUrl);
+          }
+          if (result.order.cashfreeReconUrl && !reconUrl) {
+            setReconUrl(result.order.cashfreeReconUrl);
           }
           if (result.order.cashfreeMode) {
             setCashfreeMode(result.order.cashfreeMode);
@@ -314,6 +455,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
 
         const category: string = String(result.verification_category || '').toUpperCase();
 
+        // 1. Confirmed Genuine Payment Success -> Trigger 7-Second Success Animation -> /key-success
         if (
           response.ok &&
           result.verified === true &&
@@ -335,7 +477,27 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
             planName: resolvedPlanName,
             validityLabel: resolvedValidity
           });
-        } else if (category === 'NETWORK_ERROR' || response.status >= 500) {
+          return;
+        }
+
+        // 2. If silent background poll: update UI only on terminal failure; keep waiting quietly if PENDING
+        if (silent) {
+          if (
+            category === 'FAILED' &&
+            (result.payment_status === 'FAILED' ||
+              result.order_status === 'EXPIRED' ||
+              result.order_status === 'TERMINATED')
+          ) {
+            setBannerState('FAILED');
+            setStatusMessage(
+              result.message || 'We could not verify your payment. Please try again.'
+            );
+          }
+          return;
+        }
+
+        // 3. Explicit manual check -> Trigger 7-Second Payment Not Verified Animation
+        if (category === 'NETWORK_ERROR' || response.status >= 500) {
           startNotVerifiedAnimationFlow(
             'NETWORK_ERROR',
             'NETWORK_ERROR',
@@ -350,147 +512,155 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
           startNotVerifiedAnimationFlow(
             'PENDING',
             'PENDING',
-            'Your payment is awaiting confirmation. Please check again shortly.'
+            'Your payment is awaiting confirmation. Please wait.'
           );
         } else {
           startNotVerifiedAnimationFlow(
             'FAILED',
             'FAILED',
-            'We could not verify your payment. Please try again.'
+            result.message || 'We could not verify your payment. Please try again.'
           );
         }
       } catch {
-        startNotVerifiedAnimationFlow(
-          'NETWORK_ERROR',
-          'NETWORK_ERROR',
-          'Unable to check your payment status. Please try again.'
-        );
+        if (!silent) {
+          startNotVerifiedAnimationFlow(
+            'NETWORK_ERROR',
+            'NETWORK_ERROR',
+            'Unable to check your payment status. Please try again.'
+          );
+        }
       } finally {
-        setVerifying(false);
+        if (silent) {
+          pollBusyRef.current = false;
+        } else {
+          setVerifying(false);
+        }
       }
     },
     [
       activeOrderId,
+      qrCodeDataUrl,
+      reconUrl,
       selectedPlan,
-       startNotVerifiedAnimationFlow,
+      startNotVerifiedAnimationFlow,
       startSuccessAnimationFlow,
       syncVerifiedKeyToFirestore,
+      upiIntentUrl,
       verifying
     ]
   );
 
-  // If user returned from Cashfree redirect with ?order_id=..., automatically verify once
+  // Automatically initialize the Direct UPI QR code when landing on /checkout
+  useEffect(() => {
+    if (initialOrderId) {
+      if (orderInitKeyRef.current !== `init_${initialOrderId}`) {
+        orderInitKeyRef.current = `init_${initialOrderId}`;
+        setActiveOrderId(initialOrderId);
+        verifyCashfreeOrder(initialOrderId, false);
+      }
+      return;
+    }
+
+    if (
+      selectedPlan &&
+      selectedPlan.available &&
+      isPlanFullyConfigured(selectedPlan)
+    ) {
+      const planKey = `plan_${selectedPlan.id}_${selectedPlan.priceINR}`;
+      if (orderInitKeyRef.current !== planKey) {
+        orderInitKeyRef.current = planKey;
+        initializeDirectQrOrder(false);
+      }
+    }
+  }, [initialOrderId, initializeDirectQrOrder, selectedPlan, verifyCashfreeOrder]);
+
+  // Strict 5-Minute (300s) QR Validity Countdown Timer
+  useEffect(() => {
+    if (!qrExpiresAtMs || !qrCodeDataUrl || bannerState === 'SUCCESS') {
+      return;
+    }
+
+    const updateTimer = () => {
+      const diffMs = qrExpiresAtMs - Date.now();
+      const secs = Math.max(0, Math.ceil(diffMs / 1000));
+      setQrRemainingSeconds(secs);
+
+      if (secs <= 0) {
+        setQrExpired(true);
+        setQrCodeDataUrl('');
+        setUpiIntentUrl('');
+        setReconUrl('');
+        setBannerState('FAILED');
+        setStatusMessage('QR code expired (valid for 5 minutes only). Please generate a new QR code.');
+      }
+    };
+
+    updateTimer();
+    const timerId = window.setInterval(updateTimer, 1000);
+    return () => {
+      window.clearInterval(timerId);
+    };
+  }, [qrExpiresAtMs, qrCodeDataUrl, bannerState]);
+
+  // Automatic Background Payment Status Verification every 4 seconds while QR is active
   useEffect(() => {
     if (
-      initialOrderId &&
-      autoVerifiedInitialOrderRef.current !== initialOrderId
-    ) {
-      autoVerifiedInitialOrderRef.current = initialOrderId;
-      setActiveOrderId(initialOrderId);
-      verifyCashfreeOrder(initialOrderId);
-    }
-  }, [initialOrderId, verifyCashfreeOrder]);
-
-  // Create (or reuse active) Cashfree order and open official Cashfree JS SDK v3 Checkout
-  const handleProceedToCashfreeCheckout = async () => {
-    if (
-      !selectedPlan ||
-      checkoutOpening ||
-      verifying ||
-      isAnimatingRef.current ||
+      !activeOrderId ||
+      !qrCodeDataUrl ||
+      qrExpired ||
       animationMode !== 'NONE' ||
-      bannerState === 'SUCCESS'
+      bannerState === 'SUCCESS' ||
+      bannerState === 'FAILED'
     ) {
       return;
     }
 
-    setCheckoutOpening(true);
-    setBannerState('PROCESSING');
-    setStatusMessage('Initializing secure Cashfree payment session...');
+    const intervalId = window.setInterval(() => {
+      if (!isAnimatingRef.current && !verifying) {
+        verifyCashfreeOrder(activeOrderId, true);
+      }
+    }, 4000);
 
-    try {
-      const response = await fetch('/api/payments/create-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          planId: selectedPlan.id,
-          reuseOrderId: activeOrderId || undefined
-        })
-      });
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [activeOrderId, animationMode, bannerState, qrCodeDataUrl, qrExpired, verifyCashfreeOrder, verifying]);
 
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok || !data.success || !data.payment_session_id || !data.order_id) {
-        setCheckoutOpening(false);
-        if (data.code === 'CASHFREE_NOT_CONFIGURED') {
-          setGatewayConfigured(false);
-          if (Array.isArray(data.missingCredentials)) {
-            setMissingCredentials(data.missingCredentials);
-          }
-          setBannerState('FAILED');
-          setStatusMessage(
-            data.message ||
-              'Cashfree API credentials (CASHFREE_APP_ID / CASHFREE_SECRET_KEY) are not configured on the server.'
-          );
-          return;
+  // Listen for Cashfree recon iframe postMessage events to trigger immediate backend verification
+  useEffect(() => {
+    if (!activeOrderId) return;
+    const handleReconMessage = (event: MessageEvent) => {
+      try {
+        const raw = event.data;
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        const txStatus = String(
+          parsed?.transaction?.txStatus || parsed?.txStatus || ''
+        ).toUpperCase();
+        const orderStatus = String(parsed?.order?.status || '').toUpperCase();
+        if (txStatus === 'SUCCESS' || orderStatus === 'PAID') {
+          verifyCashfreeOrder(activeOrderId, true);
         }
-
-        setBannerState('FAILED');
-        setStatusMessage(
-          data.message || 'Unable to create Cashfree payment order. Please try again.'
-        );
-        return;
+      } catch {
+        // Ignore unrelated window messages
       }
+    };
+    window.addEventListener('message', handleReconMessage);
+    return () => {
+      window.removeEventListener('message', handleReconMessage);
+    };
+  }, [activeOrderId, verifyCashfreeOrder]);
 
-      const createdOrderId = String(data.order_id);
-      const sessionToken = String(data.payment_session_id);
-      const resolvedMode: 'production' | 'sandbox' =
-        data.cashfree_mode === 'sandbox' ? 'sandbox' : 'production';
-
-      setActiveOrderId(createdOrderId);
-      setPaymentSessionId(sessionToken);
-      setCashfreeMode(resolvedMode);
-      if (data.order) {
-        setVerifiedOrder(data.order);
-      }
-
-      const cashfreeFactory = (window as any).Cashfree;
-      if (typeof cashfreeFactory !== 'function') {
-        setCheckoutOpening(false);
-        setBannerState('FAILED');
-        setStatusMessage(
-          'Cashfree Checkout SDK could not be loaded. Please check your internet connection and refresh the page.'
-        );
-        return;
-      }
-
-      const cashfree = cashfreeFactory({ mode: resolvedMode });
-
-      const checkoutResult = await cashfree.checkout({
-        paymentSessionId: sessionToken,
-        redirectTarget: '_modal'
-      });
-
-      setCheckoutOpening(false);
-
-      if (checkoutResult?.error) {
-        // User closed modal or an attempt error occurred — verify actual status with backend
-        await verifyCashfreeOrder(createdOrderId);
-        return;
-      }
-
-      // Verify payment status through the authoritative backend after modal completion
-      await verifyCashfreeOrder(createdOrderId);
-    } catch {
-      setCheckoutOpening(false);
-      setBannerState('NETWORK_ERROR');
-      setStatusMessage('Unable to connect to Cashfree payment gateway. Please try again.');
-    }
+  // Open Cashfree-supported UPI Payment Intent / Deep Link
+  const handleOpenUpiApp = () => {
+    if (!upiIntentUrl || qrExpired || animationMode !== 'NONE') return;
+    setBannerState('PENDING');
+    setStatusMessage('Your payment is awaiting confirmation. Please wait.');
+    window.location.href = upiIntentUrl;
   };
 
   const getNotVerifiedOverlayMessage = (): string => {
     if (notVerifiedReason === 'PENDING') {
-      return 'Your payment is awaiting confirmation. Please check again shortly.';
+      return 'Your payment is awaiting confirmation. Please wait.';
     }
     if (notVerifiedReason === 'NETWORK_ERROR') {
       return 'Unable to check your payment status. Please try again.';
@@ -498,16 +668,31 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     return 'We could not verify your payment. Please try again.';
   };
 
-  const verifyButtonLabel = verifying
-    ? 'VERIFYING PAYMENT...'
+  const formattedQrCountdown = `${String(Math.floor(qrRemainingSeconds / 60)).padStart(
+    2,
+    '0'
+  )}:${String(qrRemainingSeconds % 60).padStart(2, '0')}`;
+
+  const checkPaymentButtonLabel = verifying
+    ? 'CHECKING PAYMENT...'
     : hasAttemptedVerification
-    ? 'VERIFY PAYMENT AGAIN'
-    : 'VERIFY PAYMENT';
+    ? 'CHECK PAYMENT AGAIN'
+    : 'CHECK PAYMENT STATUS';
 
   return (
-    <div className="relative min-h-[100dvh] w-full bg-[#070B12] text-[#F4F7FB] overflow-y-auto overflow-x-hidden select-none">
+    <div className="relative min-h-[100dvh] w-full bg-[#05080D] text-[#F4F7FB] overflow-y-auto overflow-x-hidden select-none">
       {/* Subtle ambient background depth matching REVOX PANEL */}
       <div className="fixed inset-0 vignette-radial pointer-events-none z-0" />
+
+      {/* Hidden 0x0 Cashfree Recon Frame for real-time bank QR push reconciliation */}
+      {reconUrl && animationMode === 'NONE' && bannerState !== 'SUCCESS' && (
+        <iframe
+          src={reconUrl}
+          title="Cashfree Recon"
+          className="w-0 h-0 border-0 opacity-0 pointer-events-none fixed"
+          aria-hidden="true"
+        />
+      )}
 
       {/* ======================================================================
           1. 7-SECOND PAYMENT SUCCESSFUL ANIMATION OVERLAY
@@ -569,7 +754,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-[#05080D]/80 border border-[#00D9F5]/25 mb-5">
               <span className="w-1.5 h-1.5 rounded-full bg-[#20D997]" />
               <span className="text-[10px] font-mono-code font-bold tracking-[0.18em] uppercase text-[#A7B5C5]">
-                CASHFREE VERIFIED // REVOX
+                REVOX PANEL // VERIFIED
               </span>
             </div>
 
@@ -691,14 +876,14 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                 Payment verified successfully.
               </p>
 
-              {/* Purchased Plan Summary (Access key is never shown on the animation screen) */}
+              {/* Purchased Plan Summary */}
               <div
                 className="bg-[#05080D]/85 rounded-xl px-4 py-3 space-y-2 text-left"
                 style={{ border: '1px solid rgba(0, 217, 245, 0.25)' }}
               >
                 <div className="flex items-center justify-between gap-2 text-xs">
                   <span className="text-[#A7B5C5] font-mono-code text-[10px] tracking-[0.14em] uppercase">
-                    PURCHASED PLAN
+                    SELECTED PLAN
                   </span>
                   <span className="font-tech font-bold text-[#F4F7FB] tracking-wider uppercase">
                     {activePlanName}
@@ -729,7 +914,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                   />
                 </div>
                 <div className="text-[10px] font-mono-code tracking-[0.15em] uppercase text-[#A7B5C5]">
-                  PREPARING YOUR ACCESS KEY PAGE...
+                  OPENING ACCESS KEY PAGE...
                 </div>
               </div>
             </div>
@@ -796,7 +981,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-[#05080D]/80 border border-[#FF5268]/30 mb-5">
               <span className="w-1.5 h-1.5 rounded-full bg-[#FF5268]" />
               <span className="text-[10px] font-mono-code font-bold tracking-[0.18em] uppercase text-[#A7B5C5]">
-                REVOX VERIFICATION STATUS
+                REVOX PANEL // STATUS
               </span>
             </div>
 
@@ -925,9 +1110,14 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
               }}
             >
               <div
-                className="bg-[#05080D]/85 rounded-xl px-4 py-3.5"
+                className="bg-[#05080D]/85 rounded-xl px-4 py-3.5 space-y-1"
                 style={{ border: '1px solid rgba(255, 82, 104, 0.35)' }}
               >
+                {notVerifiedReason === 'PENDING' && (
+                  <div className="text-[11px] font-tech font-bold tracking-[0.14em] uppercase text-[#00D9F5]">
+                    PAYMENT PENDING
+                  </div>
+                )}
                 <p className="text-xs sm:text-sm text-[#F4F7FB] leading-relaxed">
                   {getNotVerifiedOverlayMessage()}
                 </p>
@@ -946,7 +1136,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                   />
                 </div>
                 <div className="text-[10px] font-mono-code tracking-[0.15em] uppercase text-[#A7B5C5]">
-                  RETURNING TO CHECKOUT...
+                  RETURNING TO QR PAYMENT PAGE...
                 </div>
               </div>
             </div>
@@ -956,13 +1146,13 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
 
       <div className="relative z-10 flex flex-col min-h-[100dvh]">
         {/* ====================================================================
-            A. HEADER: REVOX LOGO + BRANDING + SECURE CHECKOUT + BACK TO PLANS
+            HEADER: REVOX PANEL + SECURE UPI PAYMENT + BACK TO PLANS
             ==================================================================== */}
-        <header className="sticky top-0 z-30 w-full bg-[#070B12]/95 backdrop-blur-sm border-b border-[#1C3041] px-4 py-3">
-          <div className="w-full max-w-[440px] mx-auto flex items-center justify-between gap-3">
-            {/* Left: REVOX Logo + Branding + SECURE CHECKOUT */}
+        <header className="sticky top-0 z-30 w-full bg-[#05080D]/95 backdrop-blur-md border-b border-[#1C3041] px-4 py-3">
+          <div className="w-full max-w-[430px] mx-auto flex items-center justify-between gap-3">
+            {/* Left: REVOX Logo + REVOX PANEL + SECURE UPI PAYMENT */}
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-9 h-9 rounded-lg bg-[#0D1622] border border-[#1C3041] flex items-center justify-center p-1 shrink-0">
+              <div className="w-9 h-9 rounded-lg bg-[#0B1420] border border-[#00D9F5]/30 flex items-center justify-center p-1 shrink-0">
                 <img
                   src={logoSrc}
                   alt="REVOX PANEL"
@@ -977,7 +1167,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                   REVOX PANEL
                 </div>
                 <div className="text-[10px] font-mono-code font-semibold tracking-[0.16em] text-[#00D9F5] leading-tight truncate uppercase">
-                  SECURE CHECKOUT
+                  SECURE UPI PAYMENT
                 </div>
               </div>
             </div>
@@ -987,7 +1177,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
               type="button"
               onClick={onBackToPlans}
               disabled={animationMode !== 'NONE'}
-              className="bg-[#0D1622] hover:bg-[#121F30] active:scale-[0.98] border border-[#1C3041] hover:border-[#00D9F5]/50 text-[#F4F7FB] text-xs font-tech font-semibold tracking-wider px-3 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer transition-colors shrink-0 disabled:opacity-50"
+              className="bg-[#0B1420] hover:bg-[#111E30] active:scale-[0.98] border border-[#1C3041] hover:border-[#00D9F5]/50 text-[#F4F7FB] text-xs font-tech font-semibold tracking-wider px-3 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer transition-colors shrink-0 disabled:opacity-50"
             >
               <span className="text-[#00D9F5]">←</span>
               <span>Back to Plans</span>
@@ -996,21 +1186,21 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
         </header>
 
         {/* ====================================================================
-            MAIN CHECKOUT CONTAINER
+            MAIN QR PAYMENT CONTAINER
             ==================================================================== */}
-        <main className="w-full max-w-[440px] mx-auto px-3.5 sm:px-4 pt-4 pb-10 space-y-4 flex-1">
+        <main className="w-full max-w-[430px] mx-auto px-3.5 sm:px-4 pt-4 pb-10 space-y-4 flex-1">
           {!hasValidPlanOrOrder ? (
-            <section className="bg-[#0D1622] border border-[#1C3041] rounded-xl p-5 text-center space-y-3.5">
+            <section className="bg-[#0B1420] border border-[#1C3041] rounded-2xl p-5 text-center space-y-3.5">
               <h1 className="text-base font-bold font-tech text-[#F4F7FB] tracking-wider uppercase">
                 NO PLAN SELECTED
               </h1>
               <p className="text-xs text-[#A7B5C5] leading-relaxed">
-                Please select an access-key plan before proceeding to checkout.
+                Please select an access-key plan before proceeding to payment.
               </p>
               <button
                 type="button"
                 onClick={onBackToPlans}
-                className="w-full py-3 px-4 rounded-lg bg-gradient-to-r from-[#00D9F5] to-[#168BFF] text-[#070B12] font-tech font-bold text-xs tracking-wider uppercase cursor-pointer"
+                className="w-full py-3 px-4 rounded-lg bg-gradient-to-r from-[#00D9F5] to-[#168BFF] text-[#05080D] font-tech font-bold text-xs tracking-wider uppercase cursor-pointer"
               >
                 ← BACK TO PLANS
               </button>
@@ -1018,19 +1208,26 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
           ) : (
             <>
               {/* ==============================================================
-                  B. ORDER SUMMARY CARD
+                  CLEAN & PROFESSIONAL REVOX QR PAYMENT CARD
                   ============================================================== */}
-              <section className="bg-[#0D1622] border border-[#1C3041] rounded-xl p-4 space-y-3 shadow-[0_8px_24px_rgba(0,0,0,0.45)]">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-mono-code font-bold tracking-[0.16em] uppercase text-[#00D9F5]">
-                    ORDER SUMMARY
-                  </span>
-                  <span className="text-[11px] font-tech font-bold tracking-wider uppercase text-[#F4F7FB]">
-                    {activePlanName}
-                  </span>
-                </div>
+              <section
+                className="bg-[#0B1420]/95 backdrop-blur-xl rounded-2xl p-4 sm:p-5 space-y-4"
+                style={{
+                  border: '1px solid rgba(0, 217, 245, 0.22)',
+                  boxShadow: '0 10px 30px rgba(0, 0, 0, 0.55)'
+                }}
+              >
+                {/* Selected Plan / Panel Validity / Payable Amount */}
+                <div className="bg-[#05080D]/90 border border-[#1C3041] rounded-xl px-4 py-3 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="text-[#A7B5C5]">Selected Plan:</span>
+                    <span className="font-tech font-bold text-[#F4F7FB] tracking-wider uppercase">
+                      {activePlanName}
+                    </span>
+                  </div>
 
-                <div className="bg-[#090F18] border border-[#1C3041] rounded-lg px-3.5 py-2.5 space-y-2">
+                  <div className="h-[1px] bg-[#1C3041]" />
+
                   <div className="flex items-center justify-between gap-2 text-xs">
                     <span className="text-[#A7B5C5]">Panel Validity:</span>
                     <span className="font-tech font-bold text-[#F4F7FB] tracking-wide">
@@ -1041,38 +1238,16 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                   <div className="h-[1px] bg-[#1C3041]" />
 
                   <div className="flex items-center justify-between gap-2 text-xs">
-                    <span className="text-[#A7B5C5]">Total Amount:</span>
-                    <span className="text-base font-tech font-bold text-[#00D9F5] tracking-wide">
+                    <span className="text-[#A7B5C5]">Payable Amount:</span>
+                    <span className="text-lg font-tech font-bold text-[#00D9F5] tracking-wide">
                       ₹{activeAmount}
                     </span>
                   </div>
                 </div>
-              </section>
-
-              {/* ==============================================================
-                  C. CASHFREE SECURE CHECKOUT SECTION
-                  ============================================================== */}
-              <section className="bg-[#0D1622] border border-[#1C3041] rounded-xl p-4 sm:p-5 space-y-4 shadow-[0_10px_28px_rgba(0,0,0,0.5)]">
-                {/* Section Heading & Description */}
-                <div className="space-y-1 text-center">
-                  <div className="flex items-center justify-center gap-2">
-                    <h1 className="text-sm sm:text-base font-tech font-bold tracking-[0.1em] uppercase text-[#F4F7FB]">
-                      CASHFREE SECURE CHECKOUT
-                    </h1>
-                    {cashfreeMode === 'sandbox' && (
-                      <span className="px-2 py-0.5 rounded bg-[#090F18] border border-[#00D9F5]/40 text-[9px] font-mono-code font-bold tracking-widest uppercase text-[#00D9F5]">
-                        TEST MODE
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-[#A7B5C5] leading-relaxed">
-                    Complete your payment securely via Cashfree Payments using UPI, Google Pay, PhonePe, Paytm, Cards, or NetBanking.
-                  </p>
-                </div>
 
                 {/* Gateway Configuration Notice if Credentials Missing */}
                 {!gatewayChecking && !gatewayConfigured && (
-                  <div className="bg-[#090F18] border border-[#FF5268]/50 rounded-xl p-3.5 space-y-1.5 text-left">
+                  <div className="bg-[#05080D] border border-[#FF5268]/50 rounded-xl p-3.5 space-y-1.5 text-left">
                     <div className="text-[10px] font-mono-code font-bold tracking-[0.15em] uppercase text-[#FF5268]">
                       CASHFREE CONFIGURATION REQUIRED
                     </div>
@@ -1083,152 +1258,158 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                           ? missingCredentials.join(', ')
                           : 'CASHFREE_APP_ID, CASHFREE_SECRET_KEY'}
                       </span>
-                      . Please configure your Cashfree API credentials on the server to process payments.
+                      .
                     </p>
                   </div>
                 )}
 
-                {/* Cashfree Checkout Info Box */}
-                <div className="bg-[#090F18] border border-[#1C3041] rounded-xl p-4 space-y-3.5">
-                  <div className="flex items-center justify-between gap-2 text-xs">
-                    <span className="text-[#A7B5C5] font-mono-code text-[10px] tracking-[0.14em] uppercase">
-                      PAYMENT GATEWAY
-                    </span>
-                    <span className="font-tech font-bold text-[#00D9F5] tracking-wider uppercase">
-                      CASHFREE PAYMENTS
-                    </span>
-                  </div>
-
-                  {activeOrderId && (
-                    <>
-                      <div className="h-[1px] bg-[#1C3041]" />
-                      <div className="flex items-center justify-between gap-2 text-xs">
-                        <span className="text-[#A7B5C5] font-mono-code text-[10px] tracking-[0.14em] uppercase">
-                          ORDER ID
-                        </span>
-                        <span className="font-mono-code text-[11px] text-[#F4F7FB] truncate max-w-[210px]">
-                          {activeOrderId}
+                {/* ============================================================
+                    CLEAN WHITE UPI QR CONTAINER (STRICT 5-MINUTE VALIDITY)
+                    ============================================================ */}
+                <div className="flex flex-col items-center space-y-2.5 pt-0.5">
+                  <div
+                    className="relative bg-white rounded-2xl p-3.5 flex items-center justify-center w-[240px] h-[240px] sm:w-[252px] sm:h-[252px]"
+                    style={{
+                      boxShadow: '0 6px 20px rgba(0, 0, 0, 0.45)'
+                    }}
+                  >
+                    {qrLoading ? (
+                      <div className="flex flex-col items-center justify-center gap-3 text-center px-4">
+                        <span className="w-8 h-8 rounded-full border-3 border-[#00D9F5] border-t-transparent animate-spin" />
+                        <span className="text-[11px] font-tech font-bold tracking-wider uppercase text-[#05080D]">
+                          GENERATING QR...
                         </span>
                       </div>
-                    </>
+                    ) : qrCodeDataUrl && !qrExpired ? (
+                      <img
+                        src={qrCodeDataUrl}
+                        alt={`Scan to pay ₹${activeAmount} via UPI`}
+                        className="w-full h-full object-contain select-none"
+                        style={{ imageRendering: 'crisp-edges' }}
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center gap-2.5 text-center px-4">
+                        <span className="text-xs font-tech font-bold uppercase text-[#05080D]">
+                          {qrExpired ? 'QR EXPIRED (5 MIN LIMIT)' : 'QR UNAVAILABLE'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => initializeDirectQrOrder(true)}
+                          className="px-3.5 py-2 rounded-lg bg-[#05080D] text-[#00D9F5] text-[11px] font-tech font-bold tracking-wider uppercase cursor-pointer"
+                        >
+                          GENERATE NEW QR CODE
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 5-Minute QR Validity Countdown Indicator */}
+                  {qrCodeDataUrl && !qrExpired && bannerState !== 'SUCCESS' && (
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-[#05080D]/90 border border-[#1C3041]">
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                          qrRemainingSeconds <= 60
+                            ? 'bg-[#FF5268] animate-ping'
+                            : 'bg-[#20D997] animate-pulse'
+                        }`}
+                      />
+                      <span className="text-[11px] font-mono-code font-semibold tracking-wider uppercase text-[#A7B5C5]">
+                        QR Valid For:
+                      </span>
+                      <span
+                        className={`text-xs font-mono-code font-extrabold tracking-widest ${
+                          qrRemainingSeconds <= 60 ? 'text-[#FF5268]' : 'text-[#00D9F5]'
+                        }`}
+                      >
+                        {formattedQrCountdown}
+                      </span>
+                    </div>
                   )}
 
-                  {/* Supported Payment Methods */}
-                  <div className="pt-2 border-t border-[#1C3041] text-center space-y-2">
-                    <div className="text-[10px] font-mono-code font-bold tracking-[0.16em] uppercase text-[#A7B5C5]">
-                      SUPPORTED PAYMENT METHODS
-                    </div>
-                    <div className="flex flex-wrap items-center justify-center gap-1.5">
-                      {[
-                        'UPI QR & Intent',
-                        'Google Pay',
-                        'PhonePe',
-                        'Paytm',
-                        'Cards & NetBanking'
-                      ].map(method => (
-                        <span
-                          key={method}
-                          className="px-2.5 py-1 rounded bg-[#0D1622] border border-[#1C3041] text-[10px] font-tech font-semibold tracking-wider text-[#F4F7FB]"
-                        >
-                          {method}
-                        </span>
-                      ))}
-                    </div>
+                  {/* Clean Single-Line Scan Instruction */}
+                  <div className="text-xs font-tech font-bold tracking-[0.16em] uppercase text-[#00D9F5] pt-0.5">
+                    SCAN &amp; PAY ANY APP
                   </div>
                 </div>
 
                 {/* ============================================================
-                    PRIMARY ACTION: PROCEED TO CASHFREE PAYMENT
+                    OPEN UPI APP BUTTON (Shown only if valid Cashfree UPI intent link is available)
                     ============================================================ */}
-                <button
-                  type="button"
-                  onClick={handleProceedToCashfreeCheckout}
-                  disabled={
-                    checkoutOpening ||
-                    verifying ||
-                    animationMode !== 'NONE' ||
-                    bannerState === 'SUCCESS'
-                  }
-                  className="relative overflow-hidden w-full py-3.5 px-5 rounded-lg bg-gradient-to-r from-[#00D9F5] to-[#168BFF] hover:brightness-105 active:scale-[0.99] text-[#070B12] font-tech font-bold text-sm tracking-[0.14em] uppercase border border-[#7CEEFF]/60 shadow-[0_4px_16px_rgba(0,217,245,0.2),inset_0_1px_0_rgba(255,255,255,0.45)] transition-all cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  <span className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/25 to-transparent" />
-                  {checkoutOpening && (
-                    <span className="w-4 h-4 rounded-full border-2 border-[#070B12] border-t-transparent animate-spin shrink-0" />
-                  )}
-                  <span className="relative z-10">
-                    {checkoutOpening
-                      ? 'OPENING CASHFREE CHECKOUT...'
-                      : activeOrderId && paymentSessionId
-                      ? 'OPEN CASHFREE CHECKOUT'
-                      : 'PROCEED TO SECURE PAYMENT'}
-                  </span>
-                </button>
-
-                {/* ============================================================
-                    SECONDARY ACTION: VERIFY PAYMENT / VERIFY PAYMENT AGAIN
-                    ============================================================ */}
-                {(Boolean(activeOrderId) || hasAttemptedVerification) && (
+                {Boolean(upiIntentUrl) && !qrExpired && (
                   <button
                     type="button"
-                    onClick={() => verifyCashfreeOrder(activeOrderId)}
+                    onClick={handleOpenUpiApp}
                     disabled={
+                      qrLoading ||
                       verifying ||
-                      checkoutOpening ||
+                      qrExpired ||
                       animationMode !== 'NONE' ||
                       bannerState === 'SUCCESS'
                     }
-                    className="w-full py-3 px-4 rounded-lg bg-[#090F18] hover:bg-[#111C2B] active:scale-[0.99] border border-[#1C3041] hover:border-[#00D9F5]/50 text-[#00D9F5] font-tech font-bold text-xs tracking-[0.14em] uppercase transition-all cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="relative overflow-hidden w-full py-3 px-5 rounded-xl bg-gradient-to-r from-[#00D9F5] to-[#168BFF] hover:brightness-105 active:scale-[0.99] text-[#05080D] font-tech font-bold text-xs tracking-[0.14em] uppercase border border-[#7CEEFF]/50 transition-all cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
-                    {verifying && (
-                      <span className="w-3.5 h-3.5 rounded-full border-2 border-[#00D9F5] border-t-transparent animate-spin shrink-0" />
-                    )}
-                    <span>{verifyButtonLabel}</span>
+                    <span className="relative z-10">OPEN UPI APP</span>
                   </button>
                 )}
 
-                {/* ============================================================
-                    STATUS MESSAGES BOX
-                    ============================================================ */}
-                {bannerState !== 'IDLE' && statusMessage && animationMode === 'NONE' && (
-                  <div
-                    role="status"
-                    className={`rounded-lg px-3.5 py-2.5 border text-xs leading-relaxed flex items-start gap-2.5 ${
-                      bannerState === 'SUCCESS'
-                        ? 'bg-[#090F18] border-[#20D997]/50 text-[#20D997]'
-                        : bannerState === 'PROCESSING' || bannerState === 'PENDING'
-                        ? 'bg-[#090F18] border-[#00D9F5]/45 text-[#F4F7FB]'
-                        : 'bg-[#090F18] border-[#FF5268]/50 text-[#FF5268]'
-                    }`}
-                  >
-                    {bannerState === 'PROCESSING' && (
-                      <span className="w-3.5 h-3.5 mt-0.5 rounded-full border-2 border-[#00D9F5] border-t-transparent animate-spin shrink-0" />
-                    )}
-                    {bannerState === 'SUCCESS' && (
-                      <span className="font-bold text-[#20D997] shrink-0">✓</span>
-                    )}
-                    {(bannerState === 'FAILED' ||
-                      bannerState === 'NETWORK_ERROR' ||
-                      bannerState === 'PENDING') && (
-                      <span className="font-bold text-[#FF5268] shrink-0">!</span>
-                    )}
-                    <span className="flex-1">{statusMessage}</span>
-                  </div>
-                )}
-              </section>
+                {(bannerState === 'FAILED' || bannerState === 'NETWORK_ERROR') &&
+                  statusMessage &&
+                  animationMode === 'NONE' && (
+                    <div
+                      role="status"
+                      className="bg-[#05080D] border border-[#FF5268]/50 rounded-xl px-4 py-3 text-center space-y-2"
+                    >
+                      <p className="text-xs text-[#FF5268] leading-relaxed">
+                        {statusMessage}
+                      </p>
+                      {bannerState === 'FAILED' && (
+                        <button
+                          type="button"
+                          onClick={() => initializeDirectQrOrder(true)}
+                          disabled={qrLoading || verifying}
+                          className="px-4 py-2 rounded-lg bg-[#0B1420] border border-[#00D9F5]/40 text-[#00D9F5] text-[11px] font-tech font-bold tracking-[0.14em] uppercase cursor-pointer hover:bg-[#111E30] transition-colors"
+                        >
+                          RETRY WITH NEW QR
+                        </button>
+                      )}
+                    </div>
+                  )}
 
-              {/* ==============================================================
-                  BACK TO PLANS LINK BELOW MAIN PAYMENT SECTION
-                  ============================================================== */}
-              <div className="pt-1 text-center">
-                <button
-                  type="button"
-                  onClick={onBackToPlans}
-                  disabled={animationMode !== 'NONE'}
-                  className="inline-flex items-center justify-center gap-1.5 text-xs font-tech font-semibold tracking-[0.14em] uppercase text-[#A7B5C5] hover:text-[#00D9F5] transition-colors cursor-pointer py-1.5 px-3 disabled:opacity-50"
-                >
-                  <span>← BACK TO PLANS</span>
-                </button>
-              </div>
+                {/* ============================================================
+                    CHECK PAYMENT STATUS BUTTON (ABOVE) + WAITING TEXT (BELOW)
+                    ============================================================ */}
+                <div className="space-y-2.5 pt-0.5">
+                  {(Boolean(activeOrderId) || hasAttemptedVerification) && (
+                    <button
+                      type="button"
+                      onClick={() => verifyCashfreeOrder(activeOrderId, false)}
+                      disabled={
+                        verifying ||
+                        qrLoading ||
+                        animationMode !== 'NONE' ||
+                        bannerState === 'SUCCESS'
+                      }
+                      className="relative w-full py-3 px-5 rounded-xl bg-[#0D1A2B]/90 hover:bg-[#112338] active:scale-[0.99] backdrop-blur-md border border-[#00D9F5]/35 text-[#F4F7FB] font-tech font-bold text-xs tracking-[0.14em] uppercase transition-all cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed flex items-center justify-center gap-2 overflow-hidden shadow-[0_0_10px_rgba(0,217,245,0.1),inset_0_1px_0_rgba(255,255,255,0.14)]"
+                    >
+                      <span className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/10 to-transparent" />
+                      {verifying ? (
+                        <span className="relative z-10 w-3.5 h-3.5 rounded-full border-2 border-[#00D9F5] border-t-transparent animate-spin shrink-0" />
+                      ) : (
+                        <span className="relative z-10 w-1.5 h-1.5 rounded-full bg-[#00D9F5] shrink-0" />
+                      )}
+                      <span className="relative z-10 text-[#F4F7FB]">
+                        {checkPaymentButtonLabel}
+                      </span>
+                    </button>
+                  )}
+
+                  {qrCodeDataUrl && !qrExpired && bannerState !== 'FAILED' && bannerState !== 'SUCCESS' && (
+                    <p className="text-center text-[11px] font-normal text-[#A7B5C5]/75 tracking-wide">
+                      Waiting for payment confirmation...
+                    </p>
+                  )}
+                </div>
+              </section>
             </>
           )}
         </main>

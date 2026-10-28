@@ -549,22 +549,56 @@
   animation: gpHeroFadeIn 0.42s 0.04s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* 2. Subtle animated cyber ice-blue light sweep across heading */
-.gp-heading-sweep {
+/* 2. Animated multi-color cyber shine sweep across WITH PANEL GAMEPLAY & EXPERIENCE THE GAMEPLAY */
+@keyframes gpColorShineSweep {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: -200% 50%;
+  }
+}
+
+.gp-heading-sweep,
+.gp-title-color-shine {
   background: linear-gradient(
     110deg,
-    #F4F7FB 0%,
-    #F4F7FB 35%,
-    #00CFE8 48%,
-    #168BFF 53%,
-    #F4F7FB 66%,
-    #D6F4FF 100%
+    #FFFFFF 0%,
+    #00F0FF 18%,
+    #20D9A0 34%,
+    #FFFFFF 48%,
+    #38B6FF 64%,
+    #A855F7 78%,
+    #00F0FF 90%,
+    #FFFFFF 100%
   );
-  background-size: 220% auto;
+  background-size: 200% auto;
   -webkit-background-clip: text;
   background-clip: text;
+  -webkit-text-fill-color: transparent;
   color: transparent;
-  animation: gpHeadingLightSweep 5.5s ease-in-out infinite;
+  filter: drop-shadow(0 2px 14px rgba(0, 229, 255, 0.28));
+  animation: gpColorShineSweep 3.2s linear infinite;
+}
+
+.gp-subtitle-color-shine {
+  background: linear-gradient(
+    110deg,
+    #D6F4FF 0%,
+    #00F0FF 22%,
+    #20D9A0 42%,
+    #FFFFFF 55%,
+    #38B6FF 75%,
+    #00F0FF 90%,
+    #D6F4FF 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  filter: drop-shadow(0 0 10px rgba(0, 229, 255, 0.22));
+  animation: gpColorShineSweep 3.2s linear infinite;
 }
 
 /* 3 & 4. Video container smoothly reveals + subtle border glow */

@@ -490,14 +490,14 @@ export const IntroVideoScreen: React.FC<IntroVideoScreenProps> = ({
           </div>
 
           {/* Main Heading: WITH PANEL GAMEPLAY */}
-          <h1 className="font-tech font-black text-[clamp(26px,7.4vw,32px)] leading-[1.05] tracking-[0.06em] uppercase text-[#F4F7FB] drop-shadow-[0_2px_14px_rgba(0,207,232,0.2)]">
+          <h1 className="font-tech font-black text-[clamp(26px,7.4vw,32px)] leading-[1.05] tracking-[0.06em] uppercase gp-title-color-shine">
             WITH PANEL
             <br />
             GAMEPLAY
           </h1>
 
           {/* Subtitle */}
-          <p className="mt-1.5 text-[10.5px] font-mono-code font-medium tracking-[0.26em] uppercase text-[#A7B5C5]">
+          <p className="mt-1.5 text-[10.5px] font-mono-code font-bold tracking-[0.26em] uppercase gp-subtitle-color-shine">
             EXPERIENCE THE GAMEPLAY
           </p>
         </section>
@@ -527,15 +527,10 @@ export const IntroVideoScreen: React.FC<IntroVideoScreenProps> = ({
                 <span className="pointer-events-none absolute bottom-[5px] right-[-14px] w-9 h-[1.5px] bg-[#00CFE8]/80 -rotate-45" />
 
                 {/* Card Header */}
-                <div className="relative z-10 flex items-center justify-between gap-2 mb-2.5 pb-2 border-b border-[#183047]">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#00CFE8] shadow-[0_0_8px_#00CFE8] shrink-0" />
-                    <span className="text-[10.5px] font-mono-code font-bold tracking-[0.17em] uppercase text-[#00CFE8] truncate">
-                      PANEL FEATURES &nbsp;·&nbsp; WHAT YOU GET
-                    </span>
-                  </div>
-                  <span className="text-[10.5px] font-mono-code font-semibold tracking-[0.16em] uppercase text-[#D5E1EC] shrink-0">
-                    {brandName}
+                <div className="relative z-10 flex items-center gap-2 mb-2.5 pb-2 border-b border-[#183047]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#00CFE8] shadow-[0_0_8px_#00CFE8] shrink-0" />
+                  <span className="text-[10.5px] font-mono-code font-bold tracking-[0.17em] uppercase text-[#00CFE8]">
+                    PANEL FEATURES
                   </span>
                 </div>
 

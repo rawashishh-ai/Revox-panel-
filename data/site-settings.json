@@ -1,5 +1,5 @@
 {
-  "logoStoragePath": "/assets/default-logo.png?v=120",
+  "logoStoragePath": "/assets/default-logo.png",
   "logoUrl": "/assets/revox-logo.png?v=120",
   "logoSize": 290,
   "logoPositionY": 0,
@@ -22,8 +22,8 @@
     "MODE MENU ✖ PANEL ✔",
     "10 + HACK FEATURE - 100% MAIN I'D SAFE"
   ],
-  "whatsappNumber": "https://wa.me/9623508876",
-  "whatsappUrl": "https://wa.me/9623508876",
+  "whatsappNumber": "https://wa.me/9112884274",
+  "whatsappUrl": "https://wa.me/9112884274",
   "themeColor": "#00E5FF",
   "buttonSettings": {
     "downloadHackUrl": "https://www.mediafire.com/file/fjyc9omx56r777v/M1NX_VIP.apk/file",
@@ -31,8 +31,9 @@
     "downloadButtonText": "DOWNLOAD PANEL",
     "setupVideoButtonText": "SETUP VIDEO",
     "keySalesEnabled": true,
-    "keyPriceINR": 199,
-    "keySaleDurationDays": 30,
+    "getKeyMode": "both",
+    "keyPriceINR": 99,
+    "keySaleDurationDays": 7,
     "introVideoUrl": "/uploads/gameplay_v12_1792903967616.mp4",
     "introVideoEnabled": true,
     "introVideoTitle": "WITH PANEL GAMEPLAY",
@@ -51,9 +52,68 @@
   "introVideoTitle": "WITH PANEL GAMEPLAY",
   "introVideoButtonText": "CONTINUE",
   "keySalesEnabled": true,
-  "keyPriceINR": 199,
-  "keySaleDurationDays": 30,
-  "updatedAt": "2026-10-27T16:20:00.000Z",
+  "getKeyMode": "both",
+  "keyPriceINR": 99,
+  "keySaleDurationDays": 7,
+  "keyPlans": [
+    {
+      "id": "plan_7_days",
+      "name": "7 DAYS ACCESS KEY",
+      "priceINR": 99,
+      "currency": "INR",
+      "validityLabel": "7 Days",
+      "durationValue": 7,
+      "durationUnit": "days",
+      "description": "Single-device locked access key for REVOX PANEL (7 Days validity).",
+      "available": true
+    },
+    {
+      "id": "plan_12_days",
+      "name": "12 DAYS ACCESS KEY",
+      "priceINR": 149,
+      "currency": "INR",
+      "validityLabel": "12 Days",
+      "durationValue": 12,
+      "durationUnit": "days",
+      "description": "Single-device locked access key for REVOX PANEL (12 Days validity).",
+      "available": true
+    },
+    {
+      "id": "plan_21_days",
+      "name": "21 DAYS ACCESS KEY",
+      "priceINR": 249,
+      "currency": "INR",
+      "validityLabel": "21 Days",
+      "durationValue": 21,
+      "durationUnit": "days",
+      "description": "Single-device locked access key for REVOX PANEL (21 Days validity).",
+      "available": true
+    },
+    {
+      "id": "plan_30_days",
+      "name": "30 DAYS ACCESS KEY",
+      "priceINR": 299,
+      "currency": "INR",
+      "validityLabel": "30 Days",
+      "durationValue": 30,
+      "durationUnit": "days",
+      "description": "Single-device locked access key for REVOX PANEL (30 Days validity).",
+      "available": true
+    },
+    {
+      "id": "plan_permanent",
+      "name": "PERMANENT ACCESS KEY",
+      "priceINR": 499,
+      "currency": "INR",
+      "validityLabel": "Permanent",
+      "durationValue": 0,
+      "durationUnit": "lifetime",
+      "description": "Permanent lifetime single-device locked access key for REVOX PANEL.",
+      "available": true
+    }
+  ],
+  "paymentGatewayConfigured": true,
+  "updatedAt": "2026-10-28T13:15:00.000Z",
   "updatedBy": "Admin",
-  "version": 120
+  "version": 130
 }

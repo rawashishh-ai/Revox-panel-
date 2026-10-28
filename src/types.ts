@@ -1,5 +1,7 @@
 export type Language = 'EN' | 'HI';
 
+export type GetKeyPurchaseMode = 'both' | 'website' | 'whatsapp';
+
 export interface PurchasePlan {
   id: string;
   name: string;
@@ -18,6 +20,7 @@ export interface ButtonSettings {
   downloadButtonText?: string;
   setupVideoButtonText?: string;
   keySalesEnabled?: boolean;
+  getKeyMode?: GetKeyPurchaseMode;
   keyPriceINR?: number;
   keySaleDurationDays?: number;
   keyPlans?: PurchasePlan[];
@@ -53,6 +56,7 @@ export interface SiteSettings {
   introVideoTitle?: string;
   introVideoButtonText?: string;
   keySalesEnabled?: boolean;
+  getKeyMode?: GetKeyPurchaseMode;
   keyPriceINR?: number;
   keySaleDurationDays?: number;
   keyPlans?: PurchasePlan[];
@@ -125,6 +129,8 @@ export interface PaymentOrder {
   paymentSessionId?: string;
   cashfreeMode?: 'production' | 'sandbox';
   cashfreeQrCode?: string;
+  cashfreeReconUrl?: string;
+  upiLinks?: Record<string, string>;
   expiresAt?: string;
   rejectionReason?: string;
 }

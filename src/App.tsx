@@ -21,7 +21,13 @@ import {
   VerifiedPurchaseSession
 } from './components/KeySuccessPage';
 import { IntroVideoScreen } from './components/IntroVideoScreen';
-import { resolveConfiguredKeyPlans, isPlanFullyConfigured } from './config/purchaseConfig';
+import {
+  resolveConfiguredKeyPlans,
+  isPlanFullyConfigured,
+  resolveGetKeyMode,
+  resolveWhatsAppPurchaseUrl,
+  WHATSAPP_PURCHASE_MESSAGE
+} from './config/purchaseConfig';
 import { db, testConnection } from './firebase';
 import { doc, getDoc, onSnapshot, collection, query, where, getDocs } from 'firebase/firestore';
 import { getOrCreateDeviceId } from './deviceId';
@@ -49,21 +55,8 @@ export default function App() {
     return null;
   });
 
-  // If user is unlocked, open directly on the unlocked dashboard; otherwise always start from Gameplay screen
-  const [hasPassedIntro, setHasPassedIntro] = useState<boolean>(() => {
-    try {
-      const stored =
-        localStorage.getItem('rvx_activated_key') ||
-        localStorage.getItem('sltx_activated_key');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (!parsed.expiresAt || new Date(parsed.expiresAt).getTime() > Date.now()) {
-          return true;
-        }
-      }
-    } catch {}
-    return true;
-  });
+  // Always start from the Gameplay page first when anyone opens the website
+  const [hasPassedIntro, setHasPassedIntro] = useState<boolean>(false);
   const [manualGameplayView, setManualGameplayView] = useState<boolean>(false);
 
   const [adminOpen, setAdminOpen] = useState(false);
@@ -266,8 +259,13 @@ export default function App() {
             prev?.introVideoButtonText ??
             'CONTINUE',
           keySalesEnabled: incoming.keySalesEnabled ?? prev?.keySalesEnabled ?? true,
-          keyPriceINR: typeof incoming.keyPriceINR === 'number' ? incoming.keyPriceINR : (prev?.keyPriceINR ?? 199),
-          keySaleDurationDays: typeof incoming.keySaleDurationDays === 'number' ? incoming.keySaleDurationDays : (prev?.keySaleDurationDays ?? 30),
+          getKeyMode:
+            incoming.getKeyMode ??
+            incoming.buttonSettings?.getKeyMode ??
+            prev?.getKeyMode ??
+            'both',
+          keyPriceINR: typeof incoming.keyPriceINR === 'number' ? incoming.keyPriceINR : (prev?.keyPriceINR ?? 99),
+          keySaleDurationDays: typeof incoming.keySaleDurationDays === 'number' ? incoming.keySaleDurationDays : (prev?.keySaleDurationDays ?? 7),
           keyPlans: Array.isArray(incoming.keyPlans) ? incoming.keyPlans : prev?.keyPlans,
           paymentGatewayConfigured:
             incoming.paymentGatewayConfigured !== undefined
@@ -725,14 +723,30 @@ export default function App() {
     availablePlans.find(p => p.id === selectedPlanId) ||
     (availablePlans.length > 0 ? availablePlans[0] : null);
 
+  const handleOpenGetKeyFlow = () => {
+    const mode = resolveGetKeyMode(activeSettings);
+    if (mode === 'whatsapp') {
+      const resolved = resolveWhatsAppPurchaseUrl(activeSettings, WHATSAPP_PURCHASE_MESSAGE);
+      window.open(resolved.url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (mode === 'website') {
+      try {
+        window.history.pushState({ rvxView: 'buy-key' }, '', '/buy-key');
+      } catch {}
+      setCheckoutOrderId(null);
+      setIsCheckoutRoute(false);
+      setIsBuyKeyRoute(true);
+      return;
+    }
+    setShowGetKeyChoiceModal(true);
+  };
+
   const showIntroVideoGate =
     !isBuyKeyRoute &&
     !isCheckoutRoute &&
     !isKeySuccessRoute &&
-    (manualGameplayView ||
-      (!unlockedKeyData &&
-        !hasPassedIntro &&
-        activeSettings.introVideoEnabled !== false));
+    (manualGameplayView || !hasPassedIntro);
 
   if (isKeySuccessRoute) {
     return (
@@ -978,7 +992,7 @@ export default function App() {
             <AnnouncementCard
               settings={activeSettings}
               lang={lang}
-              onOpenGetKeyChoice={() => setShowGetKeyChoiceModal(true)}
+              onOpenGetKeyChoice={handleOpenGetKeyFlow}
             />
 
             {/* 2. Compact Center Logo */}
@@ -990,7 +1004,7 @@ export default function App() {
             <AccessKeyForm
               lang={lang}
               purchasedKey={purchasedKey}
-              onOpenGetKey={() => setShowGetKeyChoiceModal(true)}
+              onOpenGetKey={handleOpenGetKeyFlow}
               onOpenAdmin={() => {
                 setAdminPreAuthorized(true);
                 setAdminOpen(true);

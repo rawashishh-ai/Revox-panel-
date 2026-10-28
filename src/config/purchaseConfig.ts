@@ -1,4 +1,4 @@
-import { PurchasePlan, SiteSettings } from '../types';
+import { PurchasePlan, SiteSettings, GetKeyPurchaseMode } from '../types';
 
 /**
  * ============================================================================
@@ -13,46 +13,85 @@ import { PurchasePlan, SiteSettings } from '../types';
 export const OWNER_WHATSAPP_NUMBER_OR_URL: string = 'https://wa.me/9623508876';
 
 export const WHATSAPP_PURCHASE_MESSAGE =
-  'Hello REVOX, I want to purchase an access key. Please share the available plans and purchase details.';
+  '👋 Hello REVOX PANEL!\n\n🔐 I want to buy an Access Key.\n\n💎 KEY PRICES:\n💳 7 DAYS ➜ ₹99\n💳 12 DAYS ➜ ₹149\n💳 21 DAYS ➜ ₹249\n💳 30 DAYS ➜ ₹299\n💳 PERMANENT ➜ ₹499\n\nPlease share payment details!';
 
 /**
- * Configurable Purchase Plan Templates.
- * Plan 1 reads existing plan data from the project (₹199 / 30 Days).
- * Additional plan slots are marked as requiring configuration until updated by the owner in Admin Panel.
+ * Resolves the active "GET KEY" purchase mode configured in Admin Panel:
+ * - 'both': Customer can choose Website or WhatsApp
+ * - 'website': Direct to Website (/buy-key) only
+ * - 'whatsapp': Direct to WhatsApp only
+ */
+export function resolveGetKeyMode(settings?: SiteSettings | null): GetKeyPurchaseMode {
+  const raw = settings?.getKeyMode || settings?.buttonSettings?.getKeyMode;
+  if (raw === 'website' || raw === 'whatsapp' || raw === 'both') {
+    return raw;
+  }
+  return 'both';
+}
+
+/**
+ * Official REVOX PANEL Key Price Plans:
+ * 💳 7 DAYS ➜ ₹99
+ * 💳 12 DAYS ➜ ₹149
+ * 💳 21 DAYS ➜ ₹249
+ * 💳 30 DAYS ➜ ₹299
+ * 💳 PERMANENT ➜ ₹499
  */
 export const DEFAULT_CONFIGURABLE_KEY_PLANS: PurchasePlan[] = [
   {
-    id: 'plan_standard_30d',
-    name: 'REVOX ACCESS KEY',
+    id: 'plan_7_days',
+    name: '7 DAYS ACCESS KEY',
     priceINR: 99,
     currency: 'INR',
-    validityLabel: '30 Days Validity',
-    durationValue: 30,
+    validityLabel: '7 Days',
+    durationValue: 7,
     durationUnit: 'days',
-    description: 'Single-device locked access key for REVOX PANEL.',
+    description: 'Single-device locked access key for REVOX PANEL (7 Days validity).',
     available: true
   },
   {
-    id: 'plan_custom_2',
-    name: 'Plan 02 (Unconfigured)',
-    priceINR: null,
+    id: 'plan_12_days',
+    name: '12 DAYS ACCESS KEY',
+    priceINR: 149,
     currency: 'INR',
-    validityLabel: 'Configuration Required',
-    durationValue: null,
+    validityLabel: '12 Days',
+    durationValue: 12,
     durationUnit: 'days',
-    description: 'Requires administrator configuration in Admin Panel before purchase.',
-    available: false
+    description: 'Single-device locked access key for REVOX PANEL (12 Days validity).',
+    available: true
   },
   {
-    id: 'plan_custom_3',
-    name: 'Plan 03 (Unconfigured)',
-    priceINR: null,
+    id: 'plan_21_days',
+    name: '21 DAYS ACCESS KEY',
+    priceINR: 249,
     currency: 'INR',
-    validityLabel: 'Configuration Required',
-    durationValue: null,
+    validityLabel: '21 Days',
+    durationValue: 21,
     durationUnit: 'days',
-    description: 'Requires administrator configuration in Admin Panel before purchase.',
-    available: false
+    description: 'Single-device locked access key for REVOX PANEL (21 Days validity).',
+    available: true
+  },
+  {
+    id: 'plan_30_days',
+    name: '30 DAYS ACCESS KEY',
+    priceINR: 299,
+    currency: 'INR',
+    validityLabel: '30 Days',
+    durationValue: 30,
+    durationUnit: 'days',
+    description: 'Single-device locked access key for REVOX PANEL (30 Days validity).',
+    available: true
+  },
+  {
+    id: 'plan_permanent',
+    name: 'PERMANENT ACCESS KEY',
+    priceINR: 499,
+    currency: 'INR',
+    validityLabel: 'Permanent',
+    durationValue: 0,
+    durationUnit: 'lifetime',
+    description: 'Permanent lifetime single-device locked access key for REVOX PANEL.',
+    available: true
   }
 ];
 
@@ -65,6 +104,25 @@ export function isPlanFullyConfigured(plan: PurchasePlan): boolean {
   return hasName && hasPrice && hasDuration;
 }
 
+export function isLegacyUnconfiguredKeyPlans(plans?: PurchasePlan[] | null): boolean {
+  if (!Array.isArray(plans) || plans.length === 0) return true;
+  const hasUnconfiguredPlaceholder = plans.some(
+    p =>
+      p.id === 'plan_custom_2' ||
+      p.id === 'plan_custom_3' ||
+      (p.name && p.name.includes('(Unconfigured)'))
+  );
+  if (hasUnconfiguredPlaceholder) return true;
+  if (
+    plans.length === 1 &&
+    plans[0].id === 'plan_standard_30d' &&
+    plans[0].priceINR === 1
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export function resolveConfiguredKeyPlans(settings?: SiteSettings | null): PurchasePlan[] {
   const rawPlans =
     settings?.keyPlans && Array.isArray(settings.keyPlans) && settings.keyPlans.length > 0
@@ -75,12 +133,14 @@ export function resolveConfiguredKeyPlans(settings?: SiteSettings | null): Purch
       ? settings.buttonSettings.keyPlans
       : null;
 
-  if (rawPlans) {
+  if (rawPlans && !isLegacyUnconfiguredKeyPlans(rawPlans)) {
     return rawPlans.map((p, idx) => {
       const rawLabel = (p.validityLabel || '').trim();
       const unit = p.durationUnit || 'days';
       const durVal =
-        typeof p.durationValue === 'number' && Number.isFinite(p.durationValue) && p.durationValue > 0
+        unit === 'lifetime'
+          ? 0
+          : typeof p.durationValue === 'number' && Number.isFinite(p.durationValue) && p.durationValue > 0
           ? p.durationValue
           : null;
       const resolvedLabel =
@@ -105,46 +165,14 @@ export function resolveConfiguredKeyPlans(settings?: SiteSettings | null): Purch
     });
   }
 
-  // Read existing plan configuration from SiteSettings (keyPriceINR & keySaleDurationDays) if present
-  const existingPrice =
-    typeof settings?.keyPriceINR === 'number' && settings.keyPriceINR > 0
-      ? settings.keyPriceINR
-      : typeof settings?.buttonSettings?.keyPriceINR === 'number' && settings.buttonSettings.keyPriceINR > 0
-      ? settings.buttonSettings.keyPriceINR
-      : DEFAULT_CONFIGURABLE_KEY_PLANS[0].priceINR;
-
-  const existingDuration =
-    typeof settings?.keySaleDurationDays === 'number' && settings.keySaleDurationDays > 0
-      ? settings.keySaleDurationDays
-      : typeof settings?.buttonSettings?.keySaleDurationDays === 'number' &&
-        settings.buttonSettings.keySaleDurationDays > 0
-      ? settings.buttonSettings.keySaleDurationDays
-      : DEFAULT_CONFIGURABLE_KEY_PLANS[0].durationValue;
-
-  const existingEnabled =
-    settings?.keySalesEnabled !== undefined
-      ? Boolean(settings.keySalesEnabled)
-      : settings?.buttonSettings?.keySalesEnabled !== undefined
-      ? Boolean(settings.buttonSettings.keySalesEnabled)
-      : true;
-
-  return [
-    {
-      ...DEFAULT_CONFIGURABLE_KEY_PLANS[0],
-      priceINR: existingPrice ?? null,
-      durationValue: existingDuration ?? null,
-      validityLabel: formatPlanValidity(existingDuration, 'days'),
-      available: existingEnabled && Boolean(existingPrice && existingDuration)
-    },
-    ...DEFAULT_CONFIGURABLE_KEY_PLANS.slice(1)
-  ];
+  return DEFAULT_CONFIGURABLE_KEY_PLANS.map(p => ({ ...p }));
 }
 
 export function formatPlanValidity(
   durationValue: number | null | undefined,
   durationUnit: 'minutes' | 'hours' | 'days' | 'lifetime' = 'days'
 ): string {
-  if (durationUnit === 'lifetime') return 'Lifetime Validity';
+  if (durationUnit === 'lifetime') return 'Permanent';
   if (typeof durationValue !== 'number' || !Number.isFinite(durationValue) || durationValue <= 0) {
     return 'Configuration Required';
   }

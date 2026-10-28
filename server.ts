@@ -59,6 +59,7 @@ export interface ButtonSettings {
   downloadButtonText?: string;
   setupVideoButtonText?: string;
   keySalesEnabled?: boolean;
+  getKeyMode?: 'both' | 'website' | 'whatsapp';
   keyPriceINR?: number;
   keySaleDurationDays?: number;
   introVideoUrl?: string;
@@ -77,7 +78,7 @@ export interface PurchasePlan {
   durationUnit: 'minutes' | 'hours' | 'days' | 'lifetime';
   validityLabel?: string;
   description: string;
-  features: string[];
+  features?: string[];
   badge?: string;
   available: boolean;
 }
@@ -107,6 +108,7 @@ export interface SiteSettings {
   introVideoTitle?: string;
   introVideoButtonText?: string;
   keySalesEnabled?: boolean;
+  getKeyMode?: 'both' | 'website' | 'whatsapp';
   keyPriceINR?: number;
   keySaleDurationDays?: number;
   keyPlans?: PurchasePlan[];
@@ -178,6 +180,8 @@ export interface PaymentOrder {
   paymentSessionId?: string;
   cashfreeMode?: 'production' | 'sandbox';
   cashfreeQrCode?: string;
+  cashfreeReconUrl?: string;
+  upiLinks?: Record<string, string>;
   expiresAt?: string;
   rejectionReason?: string;
 }
@@ -624,6 +628,79 @@ function maskKeyForAudit(rawKey: string, hideSecret = false): string {
   return clean;
 }
 
+const DEFAULT_SERVER_KEY_PLANS: PurchasePlan[] = [
+  {
+    id: 'plan_7_days',
+    name: '7 DAYS ACCESS KEY',
+    priceINR: 99,
+    currency: 'INR',
+    validityLabel: '7 Days',
+    durationValue: 7,
+    durationUnit: 'days',
+    description: 'Single-device locked access key for REVOX PANEL (7 Days validity).',
+    available: true
+  },
+  {
+    id: 'plan_12_days',
+    name: '12 DAYS ACCESS KEY',
+    priceINR: 149,
+    currency: 'INR',
+    validityLabel: '12 Days',
+    durationValue: 12,
+    durationUnit: 'days',
+    description: 'Single-device locked access key for REVOX PANEL (12 Days validity).',
+    available: true
+  },
+  {
+    id: 'plan_21_days',
+    name: '21 DAYS ACCESS KEY',
+    priceINR: 249,
+    currency: 'INR',
+    validityLabel: '21 Days',
+    durationValue: 21,
+    durationUnit: 'days',
+    description: 'Single-device locked access key for REVOX PANEL (21 Days validity).',
+    available: true
+  },
+  {
+    id: 'plan_30_days',
+    name: '30 DAYS ACCESS KEY',
+    priceINR: 299,
+    currency: 'INR',
+    validityLabel: '30 Days',
+    durationValue: 30,
+    durationUnit: 'days',
+    description: 'Single-device locked access key for REVOX PANEL (30 Days validity).',
+    available: true
+  },
+  {
+    id: 'plan_permanent',
+    name: 'PERMANENT ACCESS KEY',
+    priceINR: 499,
+    currency: 'INR',
+    validityLabel: 'Permanent',
+    durationValue: 0,
+    durationUnit: 'lifetime',
+    description: 'Permanent lifetime single-device locked access key for REVOX PANEL.',
+    available: true
+  }
+];
+
+function isLegacyUnconfiguredServerPlans(plans?: PurchasePlan[] | null): boolean {
+  if (!Array.isArray(plans) || plans.length === 0) return true;
+  const hasPlaceholder = plans.some(
+    p =>
+      p.id === 'plan_custom_2' ||
+      p.id === 'plan_custom_3' ||
+      (p.name && p.name.includes('(Unconfigured)'))
+  );
+  if (hasPlaceholder) return true;
+  if (plans.length === 1 && plans[0].id === 'plan_standard_30d' && plans[0].priceINR === 1) {
+    return true;
+  }
+  return false;
+}
+
 function normalizeSettings(raw: Partial<SiteSettings>): SiteSettings {
   const lines = Array.isArray(raw.announcementLines) && raw.announcementLines.length > 0
     ? raw.announcementLines
@@ -645,18 +722,28 @@ function normalizeSettings(raw: Partial<SiteSettings>): SiteSettings {
     : (raw.buttonSettings?.introVideoEnabled !== undefined ? Boolean(raw.buttonSettings.introVideoEnabled) : true);
   const introVideoTitle = raw.introVideoTitle || raw.buttonSettings?.introVideoTitle || 'WITH PANEL GAMEPLAY';
   const introVideoButtonText = raw.introVideoButtonText || raw.buttonSettings?.introVideoButtonText || 'CONTINUE';
-  const keyPriceINR = typeof raw.keyPriceINR === 'number'
+  const rawGetKeyMode = raw.getKeyMode || raw.buttonSettings?.getKeyMode;
+  const getKeyMode: 'both' | 'website' | 'whatsapp' =
+    rawGetKeyMode === 'website' || rawGetKeyMode === 'whatsapp' || rawGetKeyMode === 'both'
+      ? rawGetKeyMode
+      : 'both';
+  const keyPriceINR = typeof raw.keyPriceINR === 'number' && raw.keyPriceINR > 1
     ? raw.keyPriceINR
-    : (typeof raw.buttonSettings?.keyPriceINR === 'number' ? raw.buttonSettings.keyPriceINR : 99);
+    : (typeof raw.buttonSettings?.keyPriceINR === 'number' && raw.buttonSettings.keyPriceINR > 1 ? raw.buttonSettings.keyPriceINR : 99);
   const keySaleDurationDays = typeof raw.keySaleDurationDays === 'number'
     ? raw.keySaleDurationDays
-    : (typeof raw.buttonSettings?.keySaleDurationDays === 'number' ? raw.buttonSettings.keySaleDurationDays : 30);
+    : (typeof raw.buttonSettings?.keySaleDurationDays === 'number' ? raw.buttonSettings.keySaleDurationDays : 7);
   const keySalesEnabled = raw.keySalesEnabled !== undefined ? Boolean(raw.keySalesEnabled) : true;
   const whatsappUrl = raw.whatsappUrl || 'https://wa.me/1234567890';
   const version = typeof raw.version === 'number' && raw.version >= 1 ? raw.version : 1;
 
   const resolvedPanelName = (raw.panelName || raw.websiteTitle || 'REVOX PANEL').trim();
   const resolvedWebsiteTitle = (raw.websiteTitle || raw.panelName || 'REVOX PANEL').trim();
+
+  const resolvedKeyPlans =
+    Array.isArray(raw.keyPlans) && !isLegacyUnconfiguredServerPlans(raw.keyPlans)
+      ? raw.keyPlans
+      : DEFAULT_SERVER_KEY_PLANS;
 
   return {
     logoStoragePath: raw.logoStoragePath || '',
@@ -681,6 +768,7 @@ function normalizeSettings(raw: Partial<SiteSettings>): SiteSettings {
       downloadButtonText: raw.buttonSettings?.downloadButtonText || 'DOWNLOAD PANEL',
       setupVideoButtonText: raw.buttonSettings?.setupVideoButtonText || 'SETUP VIDEO',
       keySalesEnabled,
+      getKeyMode,
       keyPriceINR,
       keySaleDurationDays,
       introVideoUrl,
@@ -696,9 +784,10 @@ function normalizeSettings(raw: Partial<SiteSettings>): SiteSettings {
     introVideoTitle,
     introVideoButtonText,
     keySalesEnabled,
+    getKeyMode,
     keyPriceINR,
     keySaleDurationDays,
-    keyPlans: Array.isArray(raw.keyPlans) ? raw.keyPlans : undefined,
+    keyPlans: resolvedKeyPlans,
     paymentGatewayConfigured: Boolean(
       (process.env.CASHFREE_APP_ID && process.env.CASHFREE_SECRET_KEY) ||
       (process.env.TRANZUPI_API_KEY && process.env.TRANZUPI_SECRET_TOKEN)
@@ -2666,17 +2755,21 @@ function resolveTrustedServerPlan(
   requestedPlanId?: string
 ): TrustedPlanData | null {
   const rawPlans =
-    Array.isArray(settings.keyPlans) && settings.keyPlans.length > 0
+    Array.isArray(settings.keyPlans) && !isLegacyUnconfiguredServerPlans(settings.keyPlans)
       ? settings.keyPlans
       : Array.isArray((settings.buttonSettings as any)?.keyPlans) &&
-        (settings.buttonSettings as any).keyPlans.length > 0
+        !isLegacyUnconfiguredServerPlans((settings.buttonSettings as any).keyPlans)
       ? ((settings.buttonSettings as any).keyPlans as PurchasePlan[])
-      : null;
+      : DEFAULT_SERVER_KEY_PLANS;
 
   if (rawPlans && rawPlans.length > 0) {
     const cleanId = String(requestedPlanId || '').trim();
     const matched = cleanId
-      ? rawPlans.find(p => p.id === cleanId)
+      ? rawPlans.find(
+          p =>
+            p.id === cleanId ||
+            (cleanId === 'plan_standard_30d' && p.id === 'plan_7_days')
+        )
       : rawPlans.find(
           p => p.available && typeof p.priceINR === 'number' && Number.isFinite(p.priceINR) && p.priceINR > 0
         );
@@ -2710,11 +2803,11 @@ function resolveTrustedServerPlan(
 
     const validityLabel =
       unit === 'lifetime'
-        ? 'Lifetime Validity'
+        ? 'Permanent'
         : `${durVal} ${unit.charAt(0).toUpperCase() + unit.slice(1, -1)}${durVal === 1 ? '' : 's'}`;
 
     return {
-      id: matched.id || 'plan_standard_30d',
+      id: matched.id || 'plan_7_days',
       name: (matched.name || 'REVOX ACCESS KEY').trim(),
       priceINR: Number(matched.priceINR.toFixed(2)),
       currency: 'INR',
@@ -2724,36 +2817,7 @@ function resolveTrustedServerPlan(
     };
   }
 
-  // Fallback to primary configured plan in SiteSettings
-  const existingPrice =
-    typeof settings.keyPriceINR === 'number' && settings.keyPriceINR > 0
-      ? settings.keyPriceINR
-      : typeof settings.buttonSettings?.keyPriceINR === 'number' &&
-        settings.buttonSettings.keyPriceINR > 0
-      ? settings.buttonSettings.keyPriceINR
-      : 99;
-
-  const existingDuration =
-    typeof settings.keySaleDurationDays === 'number' && settings.keySaleDurationDays > 0
-      ? settings.keySaleDurationDays
-      : typeof settings.buttonSettings?.keySaleDurationDays === 'number' &&
-        settings.buttonSettings.keySaleDurationDays > 0
-      ? settings.buttonSettings.keySaleDurationDays
-      : 7;
-
-  if (requestedPlanId && requestedPlanId !== 'plan_standard_30d') {
-    return null;
-  }
-
-  return {
-    id: 'plan_standard_30d',
-    name: 'REVOX ACCESS KEY',
-    priceINR: Number(existingPrice.toFixed(2)),
-    currency: 'INR',
-    durationValue: existingDuration,
-    durationUnit: 'days',
-    validityLabel: `${existingDuration} Day${existingDuration === 1 ? '' : 's'}`
-  };
+  return null;
 }
 
 // Public endpoint to check Cashfree gateway status (never exposes secret keys)
@@ -2864,10 +2928,157 @@ app.post('/api/payments/claim-key', async (req: Request, res: Response) => {
 });
 
 
+function generateCashfreeRequestId(): string {
+  const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghiklmnopqrstuvwxyz';
+  let result = '';
+  for (let i = 0; i < 15; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+async function initiateCashfreeDirectUpiQrAndIntent(params: {
+  paymentSessionId: string;
+  mode: 'production' | 'sandbox';
+  returnUrl: string;
+  originHeader?: string;
+}): Promise<{
+  qrCodeDataUrl: string | null;
+  qrPaymentId?: string;
+  reconUrl?: string;
+  upiIntentUrl: string | null;
+  upiLinks: Record<string, string>;
+  errorMessage?: string;
+}> {
+  const sdkBase =
+    params.mode === 'sandbox'
+      ? 'https://sandbox.cashfree.com/pg/sdk/js'
+      : 'https://api.cashfree.com/pg/sdk/js';
+  const reconBase =
+    params.mode === 'sandbox'
+      ? 'https://sandbox.cashfree.com/pg/view/status/collect'
+      : 'https://api.cashfree.com/pg/view/status/collect';
+
+  const candidateReferrers = Array.from(
+    new Set(
+      [
+        (process.env.CASHFREE_APPROVED_DOMAIN || '').trim().replace(/\/$/, ''),
+        'https://revoxpanel.site',
+        params.originHeader && params.originHeader.startsWith('https://')
+          ? params.originHeader
+          : '',
+        'https://www.revoxpanel.site'
+      ].filter(Boolean)
+    )
+  );
+
+  let qrCodeDataUrl: string | null = null;
+  let qrPaymentId: string | undefined;
+  let reconUrl: string | undefined;
+  let upiIntentUrl: string | null = null;
+  let upiLinks: Record<string, string> = {};
+  let lastErrorMsg: string | undefined;
+
+  for (const referrer of candidateReferrers) {
+    try {
+      // 1. Request Cashfree UPI Intent deep links (channel: "link") first
+      const linkReqId = generateCashfreeRequestId();
+      const linkRes = await fetch(`${sdkBase}/pay`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-request-id': linkReqId,
+          'x-document-referrer': referrer,
+          'x-api-version': '2022-09-01'
+        },
+        body: JSON.stringify({
+          payment_session_id: params.paymentSessionId,
+          payment_method: {
+            upi: {
+              channel: 'link'
+            }
+          },
+          platform: 'jsxx-a-2026.10.05-x-m-c-130-a-14.0',
+          return_url: params.returnUrl
+        })
+      });
+
+      const linkData = await linkRes.json().catch(() => ({}));
+      if (linkRes.ok && linkData?.data?.payload) {
+        const payload = linkData.data.payload;
+        const extractedLinks: Record<string, string> = {};
+        for (const key of ['default', 'gpay', 'phonepe', 'paytm', 'bhim', 'web']) {
+          if (typeof payload[key] === 'string' && payload[key].trim()) {
+            extractedLinks[key] = payload[key].trim();
+          }
+        }
+        upiLinks = extractedLinks;
+        upiIntentUrl =
+          extractedLinks.default ||
+          extractedLinks.gpay ||
+          extractedLinks.phonepe ||
+          extractedLinks.paytm ||
+          extractedLinks.bhim ||
+          null;
+      }
+
+      // 2. Request Cashfree Dynamic UPI QR Code (channel: "qrcode") second so QR is the primary active attempt
+      const qrReqId = generateCashfreeRequestId();
+      const qrRes = await fetch(`${sdkBase}/pay`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-request-id': qrReqId,
+          'x-document-referrer': referrer,
+          'x-api-version': '2022-09-01'
+        },
+        body: JSON.stringify({
+          payment_session_id: params.paymentSessionId,
+          payment_method: {
+            upi: {
+              channel: 'qrcode'
+            }
+          },
+          platform: 'jsxx-a-2026.10.05-x-d-c-130-l-Linux',
+          return_url: params.returnUrl
+        })
+      });
+
+      const qrData = await qrRes.json().catch(() => ({}));
+      if (
+        qrRes.ok &&
+        typeof qrData?.data?.payload?.qrcode === 'string' &&
+        qrData.data.payload.qrcode.trim() !== ''
+      ) {
+        qrCodeDataUrl = qrData.data.payload.qrcode.trim();
+        qrPaymentId = qrData.cf_payment_id ? String(qrData.cf_payment_id) : undefined;
+        reconUrl = `${reconBase}/${params.paymentSessionId}${qrReqId}`;
+        break;
+      } else if (qrData?.code === 'domain_name_not_approved') {
+        lastErrorMsg = qrData?.message;
+        continue;
+      } else {
+        lastErrorMsg = qrData?.message || 'Unable to generate Cashfree UPI QR code.';
+      }
+    } catch (err: any) {
+      lastErrorMsg = err?.message || 'Network error while generating Cashfree UPI QR code.';
+    }
+  }
+
+  return {
+    qrCodeDataUrl,
+    qrPaymentId,
+    reconUrl,
+    upiIntentUrl,
+    upiLinks,
+    errorMessage: qrCodeDataUrl ? undefined : lastErrorMsg
+  };
+}
+
 // Create Order Handler for /api/payments/create-order and /api/create-order
 // Security: Strictly calculates amount from server-side trusted plan data; never trusts browser amount.
 async function handleCreatePaymentOrder(req: Request, res: Response) {
-  const { planId, customerName, customerPhone, customer_details, reuseOrderId } = req.body || {};
+  const { planId, customerName, customerPhone, customer_details, reuseOrderId, forceNew } = req.body || {};
   const settings = getSettings();
 
   if (settings.keySalesEnabled === false) {
@@ -2901,48 +3112,99 @@ async function handleCreatePaymentOrder(req: Request, res: Response) {
   }
 
   const sales = getSales();
+  const originHeader = (req.headers.origin || '').trim().replace(/\/$/, '');
 
-  // 3. Prevent duplicate order creation if an active pending order for the same plan already exists
-  if (reuseOrderId && typeof reuseOrderId === 'string') {
+  const QR_VALIDITY_DURATION_MS = 5 * 60 * 1000; // Strict 5-minute QR validity
+
+  // 3. Prevent duplicate order creation if an active pending order for the same plan already exists within 5 minutes
+  if (!forceNew && reuseOrderId && typeof reuseOrderId === 'string') {
     const cleanReuseId = reuseOrderId.trim();
-    const existingOrder = sales.find(
-      s =>
-        s.orderId === cleanReuseId &&
-        s.paymentStatus === 'PENDING' &&
-        s.planId === trustedPlan.id &&
-        Math.abs(Number(s.amount) - trustedPlan.priceINR) < 0.01 &&
-        s.paymentSessionId &&
-        s.cashfreeMode === cf.env &&
-        Date.now() - new Date(s.purchasedAt).getTime() < 25 * 60 * 1000
-    );
+    const existingOrder = sales.find(s => {
+      if (
+        s.orderId !== cleanReuseId ||
+        s.paymentStatus !== 'PENDING' ||
+        s.planId !== trustedPlan.id ||
+        Math.abs(Number(s.amount) - trustedPlan.priceINR) >= 0.01 ||
+        !s.paymentSessionId ||
+        s.cashfreeMode !== cf.env
+      ) {
+        return false;
+      }
+      const createdMs = new Date(s.purchasedAt).getTime();
+      const expiryMs = s.expiresAt
+        ? new Date(s.expiresAt).getTime()
+        : createdMs + QR_VALIDITY_DURATION_MS;
+      return Number.isFinite(expiryMs) && Date.now() < expiryMs;
+    });
 
     if (existingOrder) {
-      return res.json({
-        success: true,
-        reused: true,
-        gateway: 'cashfree',
-        gatewayConfigured: true,
-        cashfreeActive: true,
-        order_id: existingOrder.orderId,
-        order_amount: existingOrder.amount,
-        order_currency: existingOrder.currency,
-        payment_session_id: existingOrder.paymentSessionId,
-        cashfree_mode: existingOrder.cashfreeMode,
-        order: {
-          orderId: existingOrder.orderId,
-          planId: existingOrder.planId,
-          planName: existingOrder.planName,
-          planDurationValue: existingOrder.planDurationValue,
-          planDurationUnit: existingOrder.planDurationUnit,
-          amount: existingOrder.amount,
-          currency: existingOrder.currency,
-          paymentStatus: existingOrder.paymentStatus,
-          purchasedAt: existingOrder.purchasedAt,
+      if (!existingOrder.expiresAt) {
+        existingOrder.expiresAt = new Date(
+          new Date(existingOrder.purchasedAt).getTime() + QR_VALIDITY_DURATION_MS
+        ).toISOString();
+      }
+      if (!existingOrder.cashfreeQrCode && existingOrder.paymentSessionId) {
+        const qrResult = await initiateCashfreeDirectUpiQrAndIntent({
           paymentSessionId: existingOrder.paymentSessionId,
-          cashfreeMode: existingOrder.cashfreeMode,
-          keyDeliveryStatus: existingOrder.keyDeliveryStatus
+          mode: existingOrder.cashfreeMode || cf.env,
+          returnUrl: `https://revoxpanel.site/checkout?order_id=${encodeURIComponent(existingOrder.orderId)}`,
+          originHeader
+        });
+        if (qrResult.qrCodeDataUrl) {
+          existingOrder.cashfreeQrCode = qrResult.qrCodeDataUrl;
+          existingOrder.cashfreeReconUrl = qrResult.reconUrl;
+          if (qrResult.upiIntentUrl) {
+            existingOrder.upiIntentUrl = qrResult.upiIntentUrl;
+          }
+          if (Object.keys(qrResult.upiLinks).length > 0) {
+            existingOrder.upiLinks = qrResult.upiLinks;
+          }
+          saveSales(sales, existingOrder);
         }
-      });
+      }
+
+      if (existingOrder.cashfreeQrCode) {
+        return res.json({
+          success: true,
+          reused: true,
+          gateway: 'cashfree',
+          gatewayConfigured: true,
+          cashfreeActive: true,
+          order_id: existingOrder.orderId,
+          order_amount: existingOrder.amount,
+          order_currency: existingOrder.currency,
+          payment_session_id: existingOrder.paymentSessionId,
+          cashfree_mode: existingOrder.cashfreeMode,
+          qr_code_data_url: existingOrder.cashfreeQrCode,
+          upi_intent_url: existingOrder.upiIntentUrl || null,
+          upi_links: existingOrder.upiLinks || {},
+          recon_url: existingOrder.cashfreeReconUrl || null,
+          expires_at: existingOrder.expiresAt,
+          qr_validity_seconds: Math.max(
+            0,
+            Math.floor((new Date(existingOrder.expiresAt).getTime() - Date.now()) / 1000)
+          ),
+          order: {
+            orderId: existingOrder.orderId,
+            planId: existingOrder.planId,
+            planName: existingOrder.planName,
+            planDurationValue: existingOrder.planDurationValue,
+            planDurationUnit: existingOrder.planDurationUnit,
+            amount: existingOrder.amount,
+            currency: existingOrder.currency,
+            paymentStatus: existingOrder.paymentStatus,
+            purchasedAt: existingOrder.purchasedAt,
+            expiresAt: existingOrder.expiresAt,
+            paymentSessionId: existingOrder.paymentSessionId,
+            cashfreeMode: existingOrder.cashfreeMode,
+            cashfreeQrCode: existingOrder.cashfreeQrCode,
+            cashfreeReconUrl: existingOrder.cashfreeReconUrl,
+            upiIntentUrl: existingOrder.upiIntentUrl,
+            upiLinks: existingOrder.upiLinks,
+            keyDeliveryStatus: existingOrder.keyDeliveryStatus
+          }
+        });
+      }
     }
   }
 
@@ -2962,7 +3224,6 @@ async function handleCreatePaymentOrder(req: Request, res: Response) {
 
   // Determine return_url pointing to the dedicated /checkout route (Cashfree production requires https://)
   const appUrlEnv = (process.env.APP_URL || '').trim().replace(/\/$/, '');
-  const originHeader = (req.headers.origin || '').trim().replace(/\/$/, '');
   const host = (req.get('host') || '').trim();
   const isLocalHost = host.startsWith('localhost') || host.startsWith('127.0.0.1');
 
@@ -2976,7 +3237,7 @@ async function handleCreatePaymentOrder(req: Request, res: Response) {
   } else if (originHeader) {
     baseOrigin = originHeader.replace(/^http:\/\//i, 'https://');
   } else {
-    baseOrigin = 'https://ais-dev-pbiki4g6jrqwdvcafxlw5o-412645379901.asia-southeast1.run.app';
+    baseOrigin = 'https://revoxpanel.site';
   }
 
   const returnUrl = `${baseOrigin}/checkout?order_id=${encodeURIComponent(orderId)}`;
@@ -3022,9 +3283,31 @@ async function handleCreatePaymentOrder(req: Request, res: Response) {
       });
     }
 
+    // Generate official Cashfree Direct UPI QR Code & UPI Intent Links for this payment_session_id
+    const qrSession = await initiateCashfreeDirectUpiQrAndIntent({
+      paymentSessionId: cfData.payment_session_id,
+      mode: cf.env,
+      returnUrl,
+      originHeader
+    });
+
+    if (!qrSession.qrCodeDataUrl) {
+      return res.status(502).json({
+        success: false,
+        code: 'CASHFREE_QR_GENERATION_FAILED',
+        cashfree_mode: cf.env,
+        message:
+          qrSession.errorMessage ||
+          'Cashfree created the order, but could not generate the direct UPI QR code.'
+      });
+    }
+
+    const nowMs = Date.now();
+    const expiresAtIso = new Date(nowMs + QR_VALIDITY_DURATION_MS).toISOString();
+
     const newOrder: PaymentOrder = {
       orderId,
-      paymentId: cfData.cf_order_id ? String(cfData.cf_order_id) : undefined,
+      paymentId: qrSession.qrPaymentId || (cfData.cf_order_id ? String(cfData.cf_order_id) : undefined),
       planId: trustedPlan.id,
       planName: trustedPlan.name,
       planDurationValue: trustedPlan.durationValue,
@@ -3034,10 +3317,15 @@ async function handleCreatePaymentOrder(req: Request, res: Response) {
       paymentStatus: 'PENDING',
       customerName: resolvedCustomerName,
       customerPhone: resolvedCustomerPhone,
-      purchasedAt: new Date().toISOString(),
+      purchasedAt: new Date(nowMs).toISOString(),
+      expiresAt: expiresAtIso,
       keyDeliveryStatus: 'PENDING',
       paymentSessionId: cfData.payment_session_id,
-      cashfreeMode: cf.env
+      cashfreeMode: cf.env,
+      cashfreeQrCode: qrSession.qrCodeDataUrl,
+      cashfreeReconUrl: qrSession.reconUrl,
+      upiIntentUrl: qrSession.upiIntentUrl || undefined,
+      upiLinks: Object.keys(qrSession.upiLinks).length > 0 ? qrSession.upiLinks : undefined
     };
 
     sales.unshift(newOrder);
@@ -3053,6 +3341,12 @@ async function handleCreatePaymentOrder(req: Request, res: Response) {
       order_currency: newOrder.currency,
       payment_session_id: newOrder.paymentSessionId,
       cashfree_mode: newOrder.cashfreeMode,
+      qr_code_data_url: newOrder.cashfreeQrCode,
+      upi_intent_url: newOrder.upiIntentUrl || null,
+      upi_links: newOrder.upiLinks || {},
+      recon_url: newOrder.cashfreeReconUrl || null,
+      expires_at: newOrder.expiresAt,
+      qr_validity_seconds: 300,
       order: {
         orderId: newOrder.orderId,
         planId: newOrder.planId,
@@ -3063,8 +3357,13 @@ async function handleCreatePaymentOrder(req: Request, res: Response) {
         currency: newOrder.currency,
         paymentStatus: newOrder.paymentStatus,
         purchasedAt: newOrder.purchasedAt,
+        expiresAt: newOrder.expiresAt,
         paymentSessionId: newOrder.paymentSessionId,
         cashfreeMode: newOrder.cashfreeMode,
+        cashfreeQrCode: newOrder.cashfreeQrCode,
+        cashfreeReconUrl: newOrder.cashfreeReconUrl,
+        upiIntentUrl: newOrder.upiIntentUrl,
+        upiLinks: newOrder.upiLinks,
         keyDeliveryStatus: newOrder.keyDeliveryStatus
       }
     });
@@ -3209,8 +3508,8 @@ async function verifyOrderWithCashfree(
     const successfulPayment = cfPayments.find(
       p => String(p?.payment_status || '').toUpperCase() === 'SUCCESS'
     );
-    const pendingPayment = cfPayments.find(p =>
-      ['PENDING', 'NOT_ATTEMPTED', 'AUTHORIZED'].includes(
+    const activePendingPayment = cfPayments.find(p =>
+      ['PENDING', 'AUTHORIZED'].includes(
         String(p?.payment_status || '').toUpperCase()
       )
     );
@@ -3265,8 +3564,8 @@ async function verifyOrderWithCashfree(
       };
     }
 
-    // CASE 2: Payment is currently pending confirmation (never mark pending payments as failed!)
-    if (pendingPayment && cfOrderStatus === 'ACTIVE') {
+    // CASE 2: Payment is actively pending bank confirmation
+    if (activePendingPayment && cfOrderStatus === 'ACTIVE') {
       order.paymentStatus = 'PENDING';
       saveSales(sales, order);
       return {
@@ -3274,16 +3573,49 @@ async function verifyOrderWithCashfree(
         paymentStatus: 'PENDING',
         cfOrderStatus: 'PENDING',
         verificationCategory: 'PENDING',
-        statusMessage: 'Your payment is awaiting confirmation. Please check again shortly.'
+        statusMessage: 'Your payment is awaiting confirmation. Please wait.'
       };
     }
 
-    // CASE 3: Payment Cancelled or User Dropped
+    // Enforce 5-minute QR validity if not paid and no active pending bank settlement
+    const orderCreatedMs = new Date(order.purchasedAt).getTime();
+    const orderExpiryMs = order.expiresAt
+      ? new Date(order.expiresAt).getTime()
+      : orderCreatedMs + 5 * 60 * 1000;
+    const isQrWindowExpired =
+      Number.isFinite(orderExpiryMs) && Date.now() >= orderExpiryMs && !activePendingPayment;
+
+    // CASE 3: Latest payment attempt failed or order expired/terminated or 5-minute QR window elapsed
+    if (
+      isQrWindowExpired ||
+      cfOrderStatus === 'EXPIRED' ||
+      cfOrderStatus === 'TERMINATED' ||
+      latestAttemptStatus === 'FAILED'
+    ) {
+      const failMsg = isQrWindowExpired
+        ? 'QR code expired (valid for 5 minutes only). Please generate a new QR code.'
+        : latestAttempt?.payment_message ||
+          (cfOrderStatus === 'EXPIRED'
+            ? 'The payment session has expired. Please generate a new QR code.'
+            : 'We could not verify your payment. Please try again.');
+      order.paymentStatus = 'FAILED';
+      order.rejectionReason = failMsg;
+      saveSales(sales, order);
+      return {
+        verifiedSuccess: false,
+        paymentStatus: 'FAILED',
+        cfOrderStatus: isQrWindowExpired ? 'EXPIRED' : cfOrderStatus || 'FAILED',
+        verificationCategory: 'FAILED',
+        statusMessage: failMsg
+      };
+    }
+
+    // CASE 4: Payment Cancelled or User Dropped
     if (
       cfOrderStatus === 'CANCELLED' ||
       latestAttemptStatus === 'USER_DROPPED' ||
       latestAttemptStatus === 'CANCELLED' ||
-      (userReportedCancel && !pendingPayment)
+      (userReportedCancel && !activePendingPayment)
     ) {
       const cancelMsg =
         latestAttempt?.payment_message || 'We could not verify your payment. Please try again.';
@@ -3299,30 +3631,7 @@ async function verifyOrderWithCashfree(
       };
     }
 
-    // CASE 4: Payment Failed or Order Expired/Terminated
-    if (
-      cfOrderStatus === 'EXPIRED' ||
-      cfOrderStatus === 'TERMINATED' ||
-      latestAttemptStatus === 'FAILED'
-    ) {
-      const failMsg =
-        latestAttempt?.payment_message ||
-        (cfOrderStatus === 'EXPIRED'
-          ? 'The payment session has expired.'
-          : 'We could not verify your payment. Please try again.');
-      order.paymentStatus = 'FAILED';
-      order.rejectionReason = failMsg;
-      saveSales(sales, order);
-      return {
-        verifiedSuccess: false,
-        paymentStatus: 'FAILED',
-        cfOrderStatus: cfOrderStatus || 'FAILED',
-        verificationCategory: 'FAILED',
-        statusMessage: 'We could not verify your payment. Please try again.'
-      };
-    }
-
-    // CASE 5: Order is still ACTIVE / PENDING awaiting confirmation
+    // CASE 5: Order is still ACTIVE / PENDING awaiting QR scan & confirmation
     order.paymentStatus = 'PENDING';
     saveSales(sales, order);
     return {
@@ -3330,7 +3639,7 @@ async function verifyOrderWithCashfree(
       paymentStatus: 'PENDING',
       cfOrderStatus: cfOrderStatus || 'ACTIVE',
       verificationCategory: 'PENDING',
-      statusMessage: 'Your payment is awaiting confirmation. Please check again shortly.'
+      statusMessage: 'Your payment is awaiting confirmation. Please wait.'
     };
   } catch (err) {
     console.warn('Cashfree verification request warning:', err);
@@ -3468,10 +3777,15 @@ async function handleCheckOrderStatus(req: Request, res: Response) {
     currency: order.currency,
     paymentStatus: order.paymentStatus,
     purchasedAt: order.purchasedAt,
+    expiresAt: order.expiresAt,
     paidAt: order.paidAt,
     keyDeliveryStatus: order.keyDeliveryStatus,
     paymentSessionId: order.paymentSessionId,
     cashfreeMode: order.cashfreeMode,
+    cashfreeQrCode: order.cashfreeQrCode,
+    cashfreeReconUrl: order.cashfreeReconUrl,
+    upiIntentUrl: order.upiIntentUrl,
+    upiLinks: order.upiLinks,
     rejectionReason: order.rejectionReason,
     assignedKey: order.paymentStatus === 'SUCCESS' ? order.assignedKey : undefined
   };
