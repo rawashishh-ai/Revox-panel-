@@ -311,13 +311,13 @@ export const Direct16x9VideoPlayer: React.FC<Direct16x9VideoPlayerProps> = ({
     <div className="relative w-full p-[1px] bg-gradient-to-br from-[#00CFE8]/60 via-[#1B3345] to-[#168BFF]/40 clip-video-frame animate-gp-video">
       <div
         className={`relative w-full overflow-hidden bg-[#0A111B] clip-video-frame select-none flex items-center justify-center ${
-          isVerticalVideo ? 'max-h-[48dvh] sm:max-h-[52dvh]' : 'aspect-video'
+          isVerticalVideo ? 'max-h-[34dvh] sm:max-h-[38dvh]' : 'aspect-video max-h-[28dvh] sm:max-h-[32dvh]'
         }`}
         style={
           isVerticalVideo && naturalAspect
-            ? { aspectRatio: `${naturalAspect}`, maxHeight: '48dvh' }
+            ? { aspectRatio: `${naturalAspect}`, maxHeight: '34dvh' }
             : isVerticalVideo
-            ? { aspectRatio: '9 / 16', maxHeight: '48dvh' }
+            ? { aspectRatio: '9 / 16', maxHeight: '34dvh' }
             : { aspectRatio: '16 / 9' }
         }
       >
@@ -455,32 +455,32 @@ export const IntroVideoScreen: React.FC<IntroVideoScreenProps> = ({
     .filter(p => p.length > 0);
 
   return (
-    <div className="relative w-full my-auto flex flex-col gap-3 pt-1 pb-2 select-none animate-page-fade">
+    <div className="relative w-full h-full max-h-[760px] my-auto flex-1 min-h-0 flex flex-col justify-between gap-2 py-0.5 overflow-hidden select-none animate-page-fade">
       {/* Subtle Blue Ambient Lighting Backdrop (reduced by ~20%) */}
       <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 w-64 max-w-full h-40 bg-[radial-gradient(ellipse_at_center,rgba(0,207,232,0.11)_0%,rgba(22,139,255,0.04)_45%,transparent_75%)] blur-xl -z-10" />
 
       {/* ========================================================
           1. COMPACT PREMIUM HERO SECTION
           ======================================================== */}
-      <section className="animate-gp-hero text-center">
+      <section className="animate-gp-hero text-center shrink-0">
         {/* Dynamic Website / Panel Name Badge */}
-        <div className="inline-flex items-center justify-center gap-2 mb-1 max-w-full">
+        <div className="inline-flex items-center justify-center gap-2 mb-0.5 max-w-full">
           <span className="w-1.5 h-1.5 rounded-full bg-[#00CFE8] shadow-[0_0_6px_rgba(0,207,232,0.8)] shrink-0" />
-          <span className="text-[10.5px] sm:text-[11px] font-mono-code font-bold tracking-[0.22em] sm:tracking-[0.26em] uppercase text-[#00CFE8] truncate">
+          <span className="text-[10px] sm:text-[11px] font-mono-code font-bold tracking-[0.22em] sm:tracking-[0.26em] uppercase text-[#00CFE8] truncate">
             {brandName}
           </span>
           <span className="w-1.5 h-1.5 rounded-full bg-[#00CFE8] shadow-[0_0_6px_rgba(0,207,232,0.8)] shrink-0" />
         </div>
 
         {/* Main Heading: WITH PANEL GAMEPLAY */}
-        <h1 className="font-tech font-black text-[clamp(24px,7.2vw,33px)] leading-[1.05] tracking-[0.06em] sm:tracking-[0.08em] uppercase gp-heading-sweep drop-shadow-[0_3px_14px_rgba(0,207,232,0.18)]">
+        <h1 className="font-tech font-black text-[clamp(22px,6.8vw,31px)] leading-[1.03] tracking-[0.06em] sm:tracking-[0.08em] uppercase gp-heading-sweep drop-shadow-[0_3px_14px_rgba(0,207,232,0.18)]">
           WITH PANEL
           <br />
           GAMEPLAY
         </h1>
 
         {/* Elegant Subtitle */}
-        <p className="mt-1 text-[10px] sm:text-[10.5px] font-mono-code font-semibold tracking-[0.2em] sm:tracking-[0.24em] uppercase text-[#A7B5C5]">
+        <p className="mt-0.5 text-[9.5px] sm:text-[10.5px] font-mono-code font-semibold tracking-[0.2em] sm:tracking-[0.24em] uppercase text-[#A7B5C5]">
           EXPERIENCE THE GAMEPLAY
         </p>
       </section>
@@ -488,7 +488,7 @@ export const IntroVideoScreen: React.FC<IntroVideoScreenProps> = ({
       {/* ========================================================
           2. CINEMATIC VIDEO PLAYER (Main Centerpiece)
           ======================================================== */}
-      <section className="w-full">
+      <section className="w-full shrink min-h-0 flex items-center justify-center">
         <Direct16x9VideoPlayer
           videoUrl={activeVideoUrl}
           logoUrl={settings.logoUrl}
@@ -500,13 +500,13 @@ export const IntroVideoScreen: React.FC<IntroVideoScreenProps> = ({
           3. PANEL FEATURES / WHAT YOU GET SECTION (Admin Editable)
           ======================================================== */}
       {featurePoints.length > 0 && (
-        <section className="animate-gp-video w-full">
+        <section className="animate-gp-video w-full shrink-0">
           <div className="relative p-[1px] bg-gradient-to-br from-[#00CFE8]/55 via-[#1B3345] to-[#168BFF]/36 clip-card-br shadow-[0_10px_24px_-10px_rgba(0,0,0,0.72)]">
-            <div className="cyber-glass-card backdrop-blur-xl px-3.5 py-3 clip-card-br relative overflow-hidden">
+            <div className="cyber-glass-card backdrop-blur-xl px-3.5 py-2.5 clip-card-br relative overflow-hidden">
               <span className="absolute top-0 left-5 right-5 h-[1px] bg-gradient-to-r from-transparent via-[#00CFE8]/60 to-transparent pointer-events-none" />
               <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-[#00CFE8]/[0.02] to-white/[0.03] pointer-events-none" />
 
-              <div className="relative z-10 flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-[#1B3345]">
+              <div className="relative z-10 flex items-center justify-between gap-2 mb-1.5 pb-1 border-b border-[#1B3345]">
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#00CFE8] shadow-[0_0_6px_rgba(0,207,232,0.8)] shrink-0" />
                   <span className="text-[10px] font-mono-code font-bold tracking-[0.16em] sm:tracking-[0.2em] uppercase text-[#00CFE8] truncate">
@@ -518,13 +518,13 @@ export const IntroVideoScreen: React.FC<IntroVideoScreenProps> = ({
                 </span>
               </div>
 
-              <ul className="relative z-10 space-y-1.5">
+              <ul className="relative z-10 space-y-1">
                 {featurePoints.map((point, idx) => (
                   <li
                     key={idx}
-                    className="flex items-start gap-2 text-[11.5px] sm:text-xs text-[#F4F7FB] leading-snug font-sans min-w-0"
+                    className="flex items-start gap-2 text-[11px] sm:text-xs text-[#F4F7FB] leading-snug font-sans min-w-0"
                   >
-                    <span className="mt-[2px] w-4 h-4 rounded-[3px] bg-[#101B28] border border-[#00CFE8]/60 flex items-center justify-center text-[#00CFE8] text-[10px] font-bold shrink-0">
+                    <span className="mt-[1px] w-4 h-4 rounded-[3px] bg-[#101B28] border border-[#00CFE8]/60 flex items-center justify-center text-[#00CFE8] text-[10px] font-bold shrink-0">
                       ✓
                     </span>
                     <span className="flex-1 min-w-0 break-words font-medium text-[#A7B5C5]">{point}</span>
@@ -539,13 +539,13 @@ export const IntroVideoScreen: React.FC<IntroVideoScreenProps> = ({
       {/* ========================================================
           4. ACTION BUTTON: CONTINUE
           ======================================================== */}
-      <section className="animate-gp-cta w-full pt-0.5">
+      <section className="animate-gp-cta w-full shrink-0">
         {/* CONTINUE BUTTON: Primary Cyan-to-Blue Gradient (#00CFE8 -> #168BFF) */}
         <div className="p-[1px] bg-gradient-to-r from-[#00CFE8] via-[#F4F7FB]/70 to-[#168BFF] clip-continue-br shadow-[0_6px_20px_-6px_rgba(0,207,232,0.34)]">
           <button
             type="button"
             onClick={onContinue}
-            className="relative w-full py-3.5 px-6 clip-continue-br cyber-primary-btn hover:brightness-108 active:scale-[0.98] text-[#070B12] font-tech font-black text-[clamp(16px,4.5vw,18px)] tracking-[0.16em] sm:tracking-[0.18em] uppercase cursor-pointer transition-all duration-200 flex items-center justify-center gap-2.5 overflow-hidden group"
+            className="relative w-full py-3 px-6 clip-continue-br cyber-primary-btn hover:brightness-108 active:scale-[0.98] text-[#070B12] font-tech font-black text-[clamp(16px,4.5vw,18px)] tracking-[0.16em] sm:tracking-[0.18em] uppercase cursor-pointer transition-all duration-200 flex items-center justify-center gap-2.5 overflow-hidden group"
           >
             {/* Top-Half Glossy Reflection */}
             <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/25 to-transparent pointer-events-none" />

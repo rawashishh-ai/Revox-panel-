@@ -96,7 +96,46 @@ export const BuyKeyPage: React.FC<BuyKeyPageProps> = ({
     };
   }, []);
 
-  // Poll backend payment status while order is PENDING
+  const qrContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Mount Cashfree Web SDK V3 Dynamic UPI QR Code (modes: ["qrcode"] ONLY — Intent / VPA hidden)
+  useEffect(() => {
+    if (
+      step !== 'payment_pending' ||
+      !activeOrder?.paymentSessionId ||
+      !qrContainerRef.current
+    ) {
+      return;
+    }
+
+    const cfFactory = (window as unknown as { Cashfree?: (opts: { mode: string }) => { checkout: (cfg: Record<string, unknown>) => void } }).Cashfree;
+    if (typeof cfFactory === 'function') {
+      try {
+        qrContainerRef.current.innerHTML = '';
+        const cashfree = cfFactory({
+          mode: activeOrder.cashfreeMode || 'production'
+        });
+
+        // Cashfree को निर्देश दें कि केवल UPI QR कोड दिखाए (Intent / VPA hide रहेगा)
+        cashfree.checkout({
+          paymentSessionId: activeOrder.paymentSessionId,
+          values: {
+            element: qrContainerRef.current
+          },
+          paymentComponents: ['upi'],
+          components: {
+            upi: {
+              modes: ['qrcode']
+            }
+          }
+        });
+      } catch (err) {
+        console.warn('Cashfree QR mount notice:', err);
+      }
+    }
+  }, [step, activeOrder?.paymentSessionId, activeOrder?.cashfreeMode]);
+
+  // Auto-Verification: हर 3 सेकंड में चेक करें कि पेमेंट हुआ या नहीं (/api/check-status)
   useEffect(() => {
     if (step !== 'payment_pending' || !activeOrder?.orderId) return;
 
@@ -105,33 +144,39 @@ export const BuyKeyPage: React.FC<BuyKeyPageProps> = ({
       attempts++;
       try {
         const res = await fetch(
-          `/api/payments/order-status/${encodeURIComponent(activeOrder.orderId)}?verify=true`
+          `/api/check-status?order_id=${encodeURIComponent(activeOrder.orderId)}`
         );
         const ct = res.headers.get('content-type') || '';
         if (!ct.includes('application/json')) return;
-        const data = await res.json();
+        const statusData = await res.json();
 
-        if (data.success && data.order) {
-          setActiveOrder(data.order);
-          if (data.order.paymentStatus === 'SUCCESS') {
-            clearInterval(interval);
-            startTenSecondAnimation('success', data.order);
-          } else if (
-            data.order.paymentStatus === 'FAILED' ||
-            data.order.paymentStatus === 'CANCELLED'
-          ) {
-            clearInterval(interval);
-            startTenSecondAnimation('reject', data.order);
-          }
+        if (statusData.order) {
+          setActiveOrder(statusData.order);
+        }
+
+        if (
+          statusData.order_status === 'PAID' ||
+          statusData.payment_status === 'SUCCESS' ||
+          statusData.order?.paymentStatus === 'SUCCESS'
+        ) {
+          clearInterval(interval);
+          startTenSecondAnimation('success', statusData.order || activeOrder);
+        } else if (
+          statusData.order_status === 'FAILED' ||
+          statusData.order?.paymentStatus === 'FAILED' ||
+          statusData.order?.paymentStatus === 'CANCELLED'
+        ) {
+          clearInterval(interval);
+          startTenSecondAnimation('reject', statusData.order || activeOrder);
         }
       } catch {
-        // Ignore transient network errors during polling
+        // Ignore transient network errors during 3-second polling
       }
 
-      if (attempts > 180) {
+      if (attempts > 200) {
         clearInterval(interval);
       }
-    }, 3500);
+    }, 3000);
 
     return () => clearInterval(interval);
   }, [step, activeOrder?.orderId]);
@@ -209,13 +254,25 @@ export const BuyKeyPage: React.FC<BuyKeyPageProps> = ({
     setStatusMessage(null);
 
     try {
-      const res = await fetch('/api/payments/create-order', {
+      const orderAmount = Number(selectedPlan.priceINR || 99.0);
+      const cleanPhone =
+        customerPhone.trim().replace(/[^0-9]/g, '').slice(-10) || '9876543210';
+
+      const res = await fetch('/api/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          amount: orderAmount,
+          order_amount: orderAmount,
+          order_currency: 'INR',
+          customer_details: {
+            customer_id: 'cust_12345',
+            customer_phone: cleanPhone,
+            customer_name: customerName.trim() || 'REVOX Customer'
+          },
           planId: selectedPlan.id,
           customerName: customerName.trim() || 'REVOX Customer',
-          customerPhone: customerPhone.trim() || ''
+          customerPhone: cleanPhone
         })
       });
 
@@ -223,7 +280,11 @@ export const BuyKeyPage: React.FC<BuyKeyPageProps> = ({
       if (ct.includes('application/json')) {
         const data = await res.json();
         if (res.ok && data.success && data.order) {
-          setActiveOrder(data.order);
+          setActiveOrder({
+            ...data.order,
+            paymentSessionId: data.payment_session_id || data.order.paymentSessionId,
+            cashfreeMode: data.cashfree_mode || data.order.cashfreeMode || 'production'
+          });
           setStep('payment_pending');
           return;
         }
@@ -750,38 +811,33 @@ export const BuyKeyPage: React.FC<BuyKeyPageProps> = ({
               </div>
             </div>
 
-            {/* QR Code & UPI Pay Button */}
-            {activeOrder.upiIntentUrl && (
-              <div className="bg-[#080D14] border border-[#1B2938] rounded-xl p-4 flex flex-col items-center space-y-3">
-                <div className="p-2.5 bg-white rounded-xl border-2 border-[#00CFE8] shadow-[0_0_20px_rgba(0,207,232,0.22)]">
-                  <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
-                      activeOrder.upiIntentUrl
-                    )}`}
-                    alt="UPI QR Code"
-                    className="w-40 h-40 object-contain"
-                  />
-                </div>
-                <p className="text-[11px] text-[#A7B5C5] font-sans text-center">
-                  Scan QR with any UPI App (GPay, PhonePe, Paytm) or tap below:
-                </p>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    window.location.href = activeOrder.upiIntentUrl!;
-                  }}
-                  className="relative overflow-hidden w-full py-3 px-4 rounded-xl bg-gradient-to-b from-[#15263B] to-[#0B1522] hover:from-[#1A2F48] hover:to-[#0F1C2D] border border-[#00CFE8]/50 text-[#F4F7FB] font-tech font-bold text-xs tracking-wider cursor-pointer shadow-[0_0_16px_rgba(0,207,232,0.2),inset_0_1px_0_rgba(255,255,255,0.2)]"
-                >
-                  <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl">
-                    <div className="animate-getkey-super-shine absolute -top-[60%] -bottom-[60%] left-0 w-[40%] bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+            {/* Dynamic UPI QR Code Container ONLY (Intent / VPA Hidden) */}
+            <div className="bg-[#080D14] border border-[#1B2938] rounded-xl p-4 flex flex-col items-center space-y-3">
+              <div
+                id="qr-container"
+                ref={qrContainerRef}
+                className="min-h-[220px] w-full flex flex-col items-center justify-center"
+              >
+                {!activeOrder.paymentSessionId && activeOrder.upiIntentUrl && (
+                  <div className="p-3 bg-white rounded-xl border-2 border-[#00CFE8] shadow-[0_0_20px_rgba(0,207,232,0.22)]">
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
+                        activeOrder.upiIntentUrl
+                      )}`}
+                      alt="Dynamic UPI QR Code"
+                      className="w-44 h-44 object-contain"
+                    />
                   </div>
-                  <span className="relative z-10 text-[#00CFE8]">
-                    OPEN UPI APP TO PAY ₹{activeOrder.amount}
-                  </span>
-                </button>
+                )}
               </div>
-            )}
+
+              <p className="text-xs text-[#00CFE8] font-sans font-medium text-center">
+                स्कैन करें और पेमेंट पूरा करें... (Scan QR Code with any UPI App)
+              </p>
+              <p className="text-[11px] text-[#A7B5C5] font-sans text-center">
+                Auto-verifying payment status every 3 seconds...
+              </p>
+            </div>
 
             {/* Optional UTR / Reference Input */}
             <div>

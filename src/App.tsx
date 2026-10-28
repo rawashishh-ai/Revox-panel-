@@ -685,12 +685,12 @@ export default function App() {
   }
 
   return (
-    <div className="relative min-h-screen min-h-[100svh] min-h-[100dvh] w-full bg-[#070B12] text-[#F4F7FB] flex flex-col overflow-x-hidden select-none">
+    <div className="relative h-screen h-[100dvh] max-h-[100dvh] w-full bg-[#070B12] text-[#F4F7FB] flex flex-col justify-between overflow-hidden overscroll-none select-none">
       {/* Smooth, clean dark background depth without scanlines or dark muddy vignette */}
       <div className="fixed inset-0 vignette-radial z-0 pointer-events-none" />
 
       {/* Top Header Bar: Language Selector on Left + Gameplay Button on Right */}
-      <header className="relative z-20 revox-shell pt-3 pb-1.5 flex items-center justify-between gap-2 shrink-0">
+      <header className="relative z-20 revox-shell pt-2.5 pb-1 flex items-center justify-between gap-2 shrink-0">
         {/* Left: Language Button */}
         <LanguageSelector currentLang={lang} onLanguageChange={setLang} />
 
@@ -715,12 +715,12 @@ export default function App() {
         )}
       </header>
 
-      {/* Main Viewport Container */}
-      <main className="relative z-10 revox-shell pt-1 pb-4 flex-1 flex flex-col">
+      {/* Main Viewport Container — Strictly non-scrolling on Gameplay & Home pages */}
+      <main className="relative z-10 revox-shell pt-0.5 pb-2.5 flex-1 min-h-0 flex flex-col overflow-hidden">
         {initialLoading && !settings ? (
           /* Clean Dark Gaming Loading Skeleton */
-          <div className="w-full my-auto flex flex-col gap-3 py-2 animate-pulse">
-            <div className="h-44 w-full bg-[#101B28] border border-[#1B3345] rounded-[4px] p-4 flex flex-col justify-between">
+          <div className="w-full h-full max-h-[760px] my-auto flex flex-col justify-between py-1 animate-pulse overflow-hidden">
+            <div className="h-40 w-full bg-[#101B28] border border-[#1B3345] rounded-[4px] p-4 flex flex-col justify-between shrink-0">
               <div className="h-4 w-1/3 bg-[#152334] rounded" />
               <div className="h-6 w-2/3 bg-[#152334] rounded" />
               <div className="space-y-2">
@@ -731,18 +731,17 @@ export default function App() {
               <div className="h-8 w-full bg-[#152334] rounded" />
             </div>
 
-            <div className="flex items-center justify-center my-2">
-              <div className="w-28 h-28 rounded-full bg-[#101B28] border border-[#1B3345]" />
+            <div className="flex-1 min-h-0 flex items-center justify-center my-1">
+              <div className="w-24 h-24 rounded-full bg-[#101B28] border border-[#1B3345]" />
             </div>
 
-            <div className="space-y-2.5">
-              <div className="h-11 w-full bg-[#0A111B] border border-[#1B3345] rounded" />
-              <div className="h-10 w-full bg-[#101B28] rounded" />
-              <div className="h-12 w-full bg-[#168BFF]/30 rounded" />
+            <div className="space-y-2 shrink-0">
+              <div className="h-10 w-full bg-[#0A111B] border border-[#1B3345] rounded" />
+              <div className="h-11 w-full bg-[#168BFF]/30 rounded" />
             </div>
           </div>
         ) : showIntroVideoGate ? (
-          <div key="page-gameplay" className="w-full flex-1 flex flex-col animate-page-fade">
+          <div key="page-gameplay" className="w-full h-full flex-1 min-h-0 flex flex-col overflow-hidden animate-page-fade">
             <IntroVideoScreen
               settings={activeSettings}
               lang={lang}
@@ -758,7 +757,7 @@ export default function App() {
             />
           </div>
         ) : unlockedKeyData ? (
-          <div key="page-dashboard" className="w-full flex-1 flex flex-col justify-start pt-3 pb-4 animate-page-fade">
+          <div key="page-dashboard" className="w-full h-full flex-1 min-h-0 flex flex-col justify-start pt-2 pb-2 overflow-hidden animate-page-fade">
             <AuthorizedDashboard
               keyData={unlockedKeyData}
               lang={lang}
@@ -787,7 +786,7 @@ export default function App() {
         ) : (
           <div
             key="page-home"
-            className="w-full my-auto flex flex-col gap-2.5 min-[390px]:gap-3 sm:gap-3.5 py-1 animate-page-fade"
+            className="w-full h-full max-h-[760px] my-auto flex-1 min-h-0 flex flex-col justify-between gap-1.5 py-0.5 overflow-hidden animate-page-fade"
           >
             {/* 1. Announcement Card (with GET KEY INSTANTLY button inside) */}
             <AnnouncementCard
@@ -796,8 +795,8 @@ export default function App() {
               onOpenGetKeyChoice={() => setShowGetKeyChoiceModal(true)}
             />
 
-            {/* 2. Dynamic Center Logo (Secret 3 taps to open admin panel) */}
-            <div onClick={handleLogoSecretClick} className="cursor-default w-full">
+            {/* 2. Dynamic Center Logo (Flexible height between card & form so page never scrolls) */}
+            <div onClick={handleLogoSecretClick} className="cursor-default w-full flex-1 min-h-0 flex items-center justify-center overflow-hidden">
               <CenterLogo settings={activeSettings} />
             </div>
 

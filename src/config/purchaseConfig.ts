@@ -24,7 +24,7 @@ export const DEFAULT_CONFIGURABLE_KEY_PLANS: PurchasePlan[] = [
   {
     id: 'plan_standard_30d',
     name: 'REVOX ACCESS KEY',
-    priceINR: 199,
+    priceINR: 99,
     currency: 'INR',
     validityLabel: '30 Days Validity',
     durationValue: 30,

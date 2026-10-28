@@ -122,6 +122,8 @@ export interface PaymentOrder {
   paymentUrl?: string;
   upiIntentUrl?: string;
   tranzupiRef?: string;
+  paymentSessionId?: string;
+  cashfreeMode?: 'production' | 'sandbox';
 }
 
 export interface PaymentStats {
