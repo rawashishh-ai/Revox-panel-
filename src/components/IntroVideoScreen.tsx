@@ -180,6 +180,14 @@ export function resolveVideoPlayerSource(rawUrl?: string): ParsedVideoSource {
   };
 }
 
+
+const DEFAULT_FEATURE_POINTS = [
+  '100% ANTI BAN',
+  '90% DRAG HEADSHOT RATE - LIVE ENEMY LOCATION',
+  'MODE MENU ✖ PANEL ✔',
+  '10 + HACK FEATURE - 100% MAIN I\'D SAFE'
+];
+
 interface Direct16x9VideoPlayerProps {
   videoUrl?: string;
   logoUrl?: string;
@@ -192,7 +200,7 @@ export const Direct16x9VideoPlayer: React.FC<Direct16x9VideoPlayerProps> = ({
 }) => {
   const parsed = resolveVideoPlayerSource(videoUrl);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const [videoError, setVideoError] = useState(false);
   const [resolvedBlobUrl, setResolvedBlobUrl] = useState<string | null>(null);
   const [usingBundledFallback, setUsingBundledFallback] = useState(false);
@@ -241,23 +249,13 @@ export const Direct16x9VideoPlayer: React.FC<Direct16x9VideoPlayerProps> = ({
       ? parsed.videoUrl
       : undefined);
 
-  // Attempt unmuted autoplay first; if browser blocks unmuted autoplay, fallback to muted autoplay
+  // Start muted autoplay so playback begins immediately on all mobile browsers and displays the UNMUTE button
   useEffect(() => {
     if (parsed.type === 'html5' && videoRef.current && autoPlay && effectiveVideoSrc) {
       const v = videoRef.current;
-      v.muted = false;
-      const playPromise = v.play();
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            setIsMuted(false);
-          })
-          .catch(() => {
-            v.muted = true;
-            setIsMuted(true);
-            v.play().catch(() => {});
-          });
-      }
+      v.muted = true;
+      setIsMuted(true);
+      v.play().catch(() => {});
     }
   }, [parsed.type, effectiveVideoSrc, autoPlay]);
 
@@ -294,12 +292,13 @@ export const Direct16x9VideoPlayer: React.FC<Direct16x9VideoPlayerProps> = ({
     }
   };
 
-  const toggleMute = () => {
+  const toggleMute = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     if (!videoRef.current) return;
     const nextMuted = !videoRef.current.muted;
     videoRef.current.muted = nextMuted;
     setIsMuted(nextMuted);
-    if (!nextMuted) {
+    if (videoRef.current.paused) {
       videoRef.current.play().catch(() => {});
     }
   };
@@ -308,100 +307,123 @@ export const Direct16x9VideoPlayer: React.FC<Direct16x9VideoPlayerProps> = ({
     (naturalAspect !== null && naturalAspect < 0.92) || Boolean(parsed.isVerticalHint);
 
   return (
-    <div className="relative w-full p-[1px] bg-gradient-to-br from-[#00CFE8]/60 via-[#1B3345] to-[#168BFF]/40 clip-video-frame animate-gp-video">
-      <div
-        className={`relative w-full overflow-hidden bg-[#0A111B] clip-video-frame select-none flex items-center justify-center ${
-          isVerticalVideo ? 'max-h-[34dvh] sm:max-h-[38dvh]' : 'aspect-video max-h-[28dvh] sm:max-h-[32dvh]'
-        }`}
-        style={
-          isVerticalVideo && naturalAspect
-            ? { aspectRatio: `${naturalAspect}`, maxHeight: '34dvh' }
-            : isVerticalVideo
-            ? { aspectRatio: '9 / 16', maxHeight: '34dvh' }
-            : { aspectRatio: '16 / 9' }
-        }
-      >
-        {/* Render HTML5 Video for uploaded MP4 / WebM files */}
-        {parsed.type === 'html5' && !videoError && effectiveVideoSrc && (
-          <div className="relative w-full h-full bg-[#070B12] flex items-center justify-center">
-            <video
-              ref={videoRef}
-              src={effectiveVideoSrc}
-              onLoadedMetadata={handleLoadedMetadata}
-              className="w-full h-full object-contain bg-[#070B12]"
-              controls
-              playsInline
-              loop
-              preload="auto"
-              autoPlay={autoPlay}
-              onError={handleVideoLoadError}
-            />
-            {isMuted && (
+    <div className="relative w-full animate-gp-video">
+      {/* Ambient Cyber Cyan Back-Glow */}
+      <div className="absolute -inset-1.5 bg-gradient-to-r from-[#00CFE8]/25 via-[#168BFF]/18 to-[#00CFE8]/25 blur-lg pointer-events-none -z-10" />
+
+      {/* Video Viewport Frame with Chamfered Top-Right & Bottom-Left Corners */}
+      <div className="relative w-full p-[1.5px] bg-gradient-to-br from-[#00CFE8] via-[#00CFE8]/70 to-[#00CFE8]/90 clip-video-frame shadow-[0_0_26px_rgba(0,207,232,0.22),0_10px_28px_-8px_rgba(0,0,0,0.85)]">
+        <div
+          className={`relative w-full overflow-hidden bg-[#070B12] clip-video-frame select-none flex items-center justify-center mx-auto ${
+            isVerticalVideo ? 'max-h-[260px] sm:max-h-[290px]' : 'aspect-video'
+          }`}
+          style={
+            isVerticalVideo && naturalAspect
+              ? { aspectRatio: `${naturalAspect}`, maxHeight: '260px' }
+              : isVerticalVideo
+              ? { aspectRatio: '9 / 16', maxHeight: '260px' }
+              : { aspectRatio: '16 / 9' }
+          }
+        >
+          {/* Render HTML5 Video for uploaded MP4 / WebM files */}
+          {parsed.type === 'html5' && !videoError && effectiveVideoSrc && (
+            <div
+              onClick={toggleMute}
+              className="relative w-full h-full bg-[#070B12] flex items-center justify-center cursor-pointer"
+            >
+              <video
+                ref={videoRef}
+                src={effectiveVideoSrc}
+                onLoadedMetadata={handleLoadedMetadata}
+                className={`w-full h-full bg-[#070B12] ${
+                  isVerticalVideo ? 'object-contain' : 'object-cover'
+                }`}
+                playsInline
+                loop
+                muted={isMuted}
+                preload="auto"
+                autoPlay={autoPlay}
+                onError={handleVideoLoadError}
+              />
+
+              {/* Top-Right UNMUTE / MUTE Button matching screenshot */}
               <button
                 type="button"
                 onClick={toggleMute}
-                className="absolute top-2.5 right-2.5 z-20 bg-[#101B28]/95 hover:bg-[#152334] border border-[#00CFE8]/50 text-[#F4F7FB] text-[10px] font-tech font-bold uppercase tracking-[0.14em] px-2.5 py-1 flex items-center gap-1.5 shadow-[0_3px_11px_rgba(0,0,0,0.55)] cursor-pointer transition-colors"
+                className="absolute top-2.5 right-2.5 z-20 bg-[#060B13]/90 hover:bg-[#0D1826] border border-[#00CFE8]/80 text-[#F4F7FB] text-[11px] font-mono-code font-bold uppercase tracking-[0.16em] px-3 py-1.5 rounded-[2px] flex items-center gap-2 shadow-[0_0_15px_rgba(0,207,232,0.28)] cursor-pointer transition-all active:scale-95"
               >
-                <svg className="w-3.5 h-3.5 text-[#00CFE8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                  <line x1="23" y1="9" x2="17" y2="15" />
-                  <line x1="17" y1="9" x2="23" y2="15" />
-                </svg>
-                <span>UNMUTE</span>
+                {isMuted ? (
+                  <>
+                    <svg
+                      className="w-3.5 h-3.5 text-[#00CFE8] shrink-0"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                      <line x1="23" y1="9" x2="17" y2="15" />
+                      <line x1="17" y1="9" x2="23" y2="15" />
+                    </svg>
+                    <span>UNMUTE</span>
+                  </>
+                ) : (
+                  <>
+                    <svg
+                      className="w-3.5 h-3.5 text-[#00CFE8] shrink-0"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                    </svg>
+                    <span>MUTE</span>
+                  </>
+                )}
               </button>
-            )}
-          </div>
-        )}
-
-        {/* Render Compatible Responsive Embed (YouTube / Google Drive / Vimeo / Streamable) */}
-        {(parsed.type === 'youtube' ||
-          parsed.type === 'gdrive' ||
-          parsed.type === 'vimeo' ||
-          parsed.type === 'streamable') &&
-          parsed.embedUrl && (
-            <iframe
-              src={parsed.embedUrl}
-              title="With Panel Gameplay"
-              className="w-full h-full border-0 bg-[#070B12]"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowFullScreen
-            />
+            </div>
           )}
 
-        {/* Built-in Clean Cinematic Gameplay Viewport when no custom video is uploaded yet */}
-        {(parsed.type === 'simulation' || videoError) && (
-          <div className="relative w-full h-full bg-gradient-to-br from-[#070B12] via-[#0A111B] to-[#0D1622] flex items-center justify-center overflow-hidden">
-            {/* Soft cyan ambient center glow (reduced by ~20%) */}
-            <div className="absolute w-44 h-44 rounded-full bg-[#00CFE8]/11 blur-2xl pointer-events-none" />
+          {/* Render Compatible Responsive Embed (YouTube / Google Drive / Vimeo / Streamable) */}
+          {(parsed.type === 'youtube' ||
+            parsed.type === 'gdrive' ||
+            parsed.type === 'vimeo' ||
+            parsed.type === 'streamable') &&
+            parsed.embedUrl && (
+              <iframe
+                src={parsed.embedUrl}
+                title="With Panel Gameplay"
+                className="w-full h-full border-0 bg-[#070B12]"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+              />
+            )}
 
-            {/* Tactical Crosshair & FOV Showcase */}
-            <div className="relative z-10 flex flex-col items-center justify-center">
-              <div className="relative w-28 h-28 sm:w-32 sm:h-32 rounded-full border border-[#00CFE8]/45 shadow-[0_0_19px_rgba(0,207,232,0.19),inset_0_0_11px_rgba(22,139,255,0.13)] flex items-center justify-center">
-                <div className="absolute inset-2 rounded-full border border-dashed border-[#00CFE8]/36 animate-spin" style={{ animationDuration: '14s' }} />
-
-                {/* Left ESP Target Frame */}
-                <div className="absolute -left-9 top-3 w-7 h-11 border border-[#00CFE8]/55 bg-[#168BFF]/12 flex flex-col justify-between p-0.5">
-                  <div className="w-full h-[1.5px] bg-[#00CFE8]" />
-                  <div className="w-2 h-2 border-t border-l border-[#F4F7FB]/55 mx-auto my-auto" />
-                </div>
-
-                {/* Center Locked Target Reticle */}
-                <div className="relative w-10 h-14 border border-[#00CFE8] bg-[#00CFE8]/12 flex items-center justify-center shadow-[0_0_11px_rgba(0,207,232,0.28)]">
-                  <div className="w-3.5 h-3.5 relative flex items-center justify-center">
-                    <div className="absolute w-full h-[1.5px] bg-[#F4F7FB]" />
-                    <div className="absolute h-full w-[1.5px] bg-[#F4F7FB]" />
+          {/* Built-in Clean Cinematic Gameplay Viewport when no custom video is uploaded yet */}
+          {(parsed.type === 'simulation' || videoError) && (
+            <div className="relative w-full h-full bg-gradient-to-br from-[#070B12] via-[#0A111B] to-[#0D1622] flex items-center justify-center overflow-hidden">
+              <div className="absolute w-40 h-40 rounded-full bg-[#00CFE8]/11 blur-2xl pointer-events-none" />
+              <div className="relative z-10 flex flex-col items-center justify-center">
+                <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-full border border-[#00CFE8]/45 shadow-[0_0_19px_rgba(0,207,232,0.19),inset_0_0_11px_rgba(22,139,255,0.13)] flex items-center justify-center">
+                  <div className="absolute inset-2 rounded-full border border-dashed border-[#00CFE8]/36 animate-spin" style={{ animationDuration: '14s' }} />
+                  <div className="relative w-9 h-12 border border-[#00CFE8] bg-[#00CFE8]/12 flex items-center justify-center shadow-[0_0_11px_rgba(0,207,232,0.28)]">
+                    <div className="w-3 h-3 relative flex items-center justify-center">
+                      <div className="absolute w-full h-[1.5px] bg-[#F4F7FB]" />
+                      <div className="absolute h-full w-[1.5px] bg-[#F4F7FB]" />
+                    </div>
                   </div>
-                </div>
-
-                {/* Right ESP Target Frame */}
-                <div className="absolute -right-9 bottom-3 w-7 h-11 border border-[#00CFE8]/55 bg-[#168BFF]/12 flex flex-col justify-between p-0.5">
-                  <div className="w-4/5 h-[1.5px] bg-[#00CFE8]" />
-                  <div className="w-2 h-2 border-b border-r border-[#F4F7FB]/55 mx-auto my-auto" />
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
@@ -414,17 +436,9 @@ interface IntroVideoScreenProps {
   onBuyKeyOnline?: () => void;
 }
 
-const DEFAULT_FEATURE_POINTS = [
-  '100% Anti-Ban Protection & High-Security Bypass',
-  'Smooth Aimbot, ESP & Ultra-Low Latency Gameplay',
-  'Instant Key Activation with 1-Device Security Lock',
-  'Works on All Latest Updates with 24/7 VIP Support'
-];
-
 export const IntroVideoScreen: React.FC<IntroVideoScreenProps> = ({
   settings,
-  onContinue,
-  onBuyKeyOnline
+  onContinue
 }) => {
   // Prefer introVideoUrl if configured, otherwise fallback to setupVideoUrl if it's a valid custom video URL
   const activeVideoUrl =
@@ -443,119 +457,143 @@ export const IntroVideoScreen: React.FC<IntroVideoScreenProps> = ({
     'REVOX PANEL'
   ).trim();
 
-  const featurePoints: string[] = (
+  const rawFeaturePoints =
     Array.isArray(settings.introFeaturePoints) && settings.introFeaturePoints.length > 0
       ? settings.introFeaturePoints
       : Array.isArray(settings.buttonSettings?.introFeaturePoints) &&
         settings.buttonSettings!.introFeaturePoints!.length > 0
       ? settings.buttonSettings!.introFeaturePoints!
-      : DEFAULT_FEATURE_POINTS
-  )
+      : DEFAULT_FEATURE_POINTS;
+
+  const featurePoints: string[] = rawFeaturePoints
     .map(p => (typeof p === 'string' ? p.trim() : ''))
     .filter(p => p.length > 0);
 
   return (
-    <div className="relative w-full h-full max-h-[760px] my-auto flex-1 min-h-0 flex flex-col justify-between gap-2 py-0.5 overflow-hidden select-none animate-page-fade">
-      {/* Subtle Blue Ambient Lighting Backdrop (reduced by ~20%) */}
-      <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 w-64 max-w-full h-40 bg-[radial-gradient(ellipse_at_center,rgba(0,207,232,0.11)_0%,rgba(22,139,255,0.04)_45%,transparent_75%)] blur-xl -z-10" />
+    <div className="relative w-full flex-1 flex flex-col justify-between py-1 select-none animate-page-fade">
+      {/* Subtle Blue Ambient Lighting Backdrop */}
+      <div className="pointer-events-none absolute -top-4 left-1/2 -translate-x-1/2 w-72 max-w-full h-36 bg-[radial-gradient(ellipse_at_center,rgba(0,207,232,0.15)_0%,rgba(22,139,255,0.05)_48%,transparent_75%)] blur-xl -z-10" />
 
-      {/* ========================================================
-          1. COMPACT PREMIUM HERO SECTION
-          ======================================================== */}
-      <section className="animate-gp-hero text-center shrink-0">
-        {/* Dynamic Website / Panel Name Badge */}
-        <div className="inline-flex items-center justify-center gap-2 mb-0.5 max-w-full">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#00CFE8] shadow-[0_0_6px_rgba(0,207,232,0.8)] shrink-0" />
-          <span className="text-[10px] sm:text-[11px] font-mono-code font-bold tracking-[0.22em] sm:tracking-[0.26em] uppercase text-[#00CFE8] truncate">
-            {brandName}
-          </span>
-          <span className="w-1.5 h-1.5 rounded-full bg-[#00CFE8] shadow-[0_0_6px_rgba(0,207,232,0.8)] shrink-0" />
-        </div>
+      {/* Top Content Stack: Hero + Video + Features Card */}
+      <div className="w-full flex flex-col gap-3.5">
+        {/* ========================================================
+            1. HERO HEADER SECTION
+            ======================================================== */}
+        <section className="animate-gp-hero text-center pt-1">
+          {/* Dynamic Website / Panel Name Badge */}
+          <div className="inline-flex items-center justify-center gap-2.5 mb-1.5 max-w-full">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#00CFE8] shadow-[0_0_8px_#00CFE8] shrink-0" />
+            <span className="text-[11px] font-mono-code font-bold tracking-[0.26em] uppercase text-[#00CFE8] truncate">
+              {brandName}
+            </span>
+            <span className="w-1.5 h-1.5 rounded-full bg-[#00CFE8] shadow-[0_0_8px_#00CFE8] shrink-0" />
+          </div>
 
-        {/* Main Heading: WITH PANEL GAMEPLAY */}
-        <h1 className="font-tech font-black text-[clamp(22px,6.8vw,31px)] leading-[1.03] tracking-[0.06em] sm:tracking-[0.08em] uppercase gp-heading-sweep drop-shadow-[0_3px_14px_rgba(0,207,232,0.18)]">
-          WITH PANEL
-          <br />
-          GAMEPLAY
-        </h1>
+          {/* Main Heading: WITH PANEL GAMEPLAY */}
+          <h1 className="font-tech font-black text-[clamp(26px,7.4vw,32px)] leading-[1.05] tracking-[0.06em] uppercase text-[#F4F7FB] drop-shadow-[0_2px_14px_rgba(0,207,232,0.2)]">
+            WITH PANEL
+            <br />
+            GAMEPLAY
+          </h1>
 
-        {/* Elegant Subtitle */}
-        <p className="mt-0.5 text-[9.5px] sm:text-[10.5px] font-mono-code font-semibold tracking-[0.2em] sm:tracking-[0.24em] uppercase text-[#A7B5C5]">
-          EXPERIENCE THE GAMEPLAY
-        </p>
-      </section>
+          {/* Subtitle */}
+          <p className="mt-1.5 text-[10.5px] font-mono-code font-medium tracking-[0.26em] uppercase text-[#A7B5C5]">
+            EXPERIENCE THE GAMEPLAY
+          </p>
+        </section>
 
-      {/* ========================================================
-          2. CINEMATIC VIDEO PLAYER (Main Centerpiece)
-          ======================================================== */}
-      <section className="w-full shrink min-h-0 flex items-center justify-center">
-        <Direct16x9VideoPlayer
-          videoUrl={activeVideoUrl}
-          logoUrl={settings.logoUrl}
-          autoPlay={true}
-        />
-      </section>
+        {/* ========================================================
+            2. CINEMATIC VIDEO PLAYER (Centerpiece)
+            ======================================================== */}
+        <section className="w-full">
+          <Direct16x9VideoPlayer
+            videoUrl={activeVideoUrl}
+            logoUrl={settings.logoUrl}
+            autoPlay={true}
+          />
+        </section>
 
-      {/* ========================================================
-          3. PANEL FEATURES / WHAT YOU GET SECTION (Admin Editable)
-          ======================================================== */}
-      {featurePoints.length > 0 && (
-        <section className="animate-gp-video w-full shrink-0">
-          <div className="relative p-[1px] bg-gradient-to-br from-[#00CFE8]/55 via-[#1B3345] to-[#168BFF]/36 clip-card-br shadow-[0_10px_24px_-10px_rgba(0,0,0,0.72)]">
-            <div className="cyber-glass-card backdrop-blur-xl px-3.5 py-2.5 clip-card-br relative overflow-hidden">
-              <span className="absolute top-0 left-5 right-5 h-[1px] bg-gradient-to-r from-transparent via-[#00CFE8]/60 to-transparent pointer-events-none" />
-              <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-[#00CFE8]/[0.02] to-white/[0.03] pointer-events-none" />
+        {/* ========================================================
+            3. PANEL FEATURES / WHAT YOU GET SECTION
+            ======================================================== */}
+        {featurePoints.length > 0 && (
+          <section className="animate-gp-video w-full relative">
+            {/* Ambient Cyan Underglow matching screenshot */}
+            <div className="pointer-events-none absolute -inset-x-1 -bottom-3 h-12 bg-[radial-gradient(ellipse_at_center,rgba(0,207,232,0.28)_0%,rgba(22,139,255,0.10)_55%,transparent_80%)] blur-md -z-10" />
 
-              <div className="relative z-10 flex items-center justify-between gap-2 mb-1.5 pb-1 border-b border-[#1B3345]">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#00CFE8] shadow-[0_0_6px_rgba(0,207,232,0.8)] shrink-0" />
-                  <span className="text-[10px] font-mono-code font-bold tracking-[0.16em] sm:tracking-[0.2em] uppercase text-[#00CFE8] truncate">
-                    PANEL FEATURES · WHAT YOU GET
+            <div className="relative p-[1.2px] bg-gradient-to-br from-[#00CFE8] via-[#00CFE8]/65 to-[#00CFE8] clip-card-br shadow-[0_12px_32px_-8px_rgba(0,207,232,0.25)]">
+              <div className="bg-gradient-to-b from-[#0E1927] to-[#0A131F] px-3.5 py-3 clip-card-br relative overflow-hidden">
+                {/* Diagonal corner accent line in bottom-right */}
+                <span className="pointer-events-none absolute bottom-[5px] right-[-14px] w-9 h-[1.5px] bg-[#00CFE8]/80 -rotate-45" />
+
+                {/* Card Header */}
+                <div className="relative z-10 flex items-center justify-between gap-2 mb-2.5 pb-2 border-b border-[#183047]">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#00CFE8] shadow-[0_0_8px_#00CFE8] shrink-0" />
+                    <span className="text-[10.5px] font-mono-code font-bold tracking-[0.17em] uppercase text-[#00CFE8] truncate">
+                      PANEL FEATURES &nbsp;·&nbsp; WHAT YOU GET
+                    </span>
+                  </div>
+                  <span className="text-[10.5px] font-mono-code font-semibold tracking-[0.16em] uppercase text-[#D5E1EC] shrink-0">
+                    {brandName}
                   </span>
                 </div>
-                <span className="text-[9.5px] font-mono-code font-bold tracking-[0.12em] uppercase text-[#A7B5C5] shrink-0">
-                  {brandName}
-                </span>
-              </div>
 
-              <ul className="relative z-10 space-y-1">
-                {featurePoints.map((point, idx) => (
-                  <li
-                    key={idx}
-                    className="flex items-start gap-2 text-[11px] sm:text-xs text-[#F4F7FB] leading-snug font-sans min-w-0"
-                  >
-                    <span className="mt-[1px] w-4 h-4 rounded-[3px] bg-[#101B28] border border-[#00CFE8]/60 flex items-center justify-center text-[#00CFE8] text-[10px] font-bold shrink-0">
-                      ✓
-                    </span>
-                    <span className="flex-1 min-w-0 break-words font-medium text-[#A7B5C5]">{point}</span>
-                  </li>
-                ))}
-              </ul>
+                {/* Feature Points with glowing cyan check badges */}
+                <ul className="relative z-10 space-y-2.5">
+                  {featurePoints.map((point, idx) => (
+                    <li
+                      key={idx}
+                      className="flex items-center gap-3 text-[12px] text-[#F4F7FB] leading-snug font-tech min-w-0"
+                    >
+                      <span className="w-[18px] h-[18px] rounded-[3.5px] bg-[#0B2135] border border-[#00CFE8] flex items-center justify-center text-[#F4F7FB] shrink-0 shadow-[0_0_8px_rgba(0,207,232,0.28)]">
+                        <svg
+                          className="w-3 h-3 text-[#F4F7FB]"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      </span>
+                      <span className="flex-1 min-w-0 break-words font-bold tracking-[0.04em] text-[#F4F7FB] uppercase">
+                        {point}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
-          </div>
-        </section>
-      )}
+          </section>
+        )}
+      </div>
 
       {/* ========================================================
-          4. ACTION BUTTON: CONTINUE
+          4. ACTION BUTTON: CONTINUE (Bottom Anchored with Cyan Glow)
           ======================================================== */}
-      <section className="animate-gp-cta w-full shrink-0">
-        {/* CONTINUE BUTTON: Primary Cyan-to-Blue Gradient (#00CFE8 -> #168BFF) */}
-        <div className="p-[1px] bg-gradient-to-r from-[#00CFE8] via-[#F4F7FB]/70 to-[#168BFF] clip-continue-br shadow-[0_6px_20px_-6px_rgba(0,207,232,0.34)]">
+      <section className="animate-gp-cta w-full mt-auto pt-3 pb-1.5 relative">
+        {/* Strong Cyan Ambient Glow around button */}
+        <div className="pointer-events-none absolute inset-x-2 -inset-y-1 bg-gradient-to-r from-[#00E5FF]/35 via-[#38B6FF]/30 to-[#168BFF]/35 blur-xl -z-10" />
+
+        <div className="relative p-[1.2px] bg-gradient-to-r from-[#7AF4FF] via-[#D4FCFF] to-[#5CA9FF] clip-continue-br shadow-[0_0_28px_rgba(0,207,232,0.42),0_4px_16px_rgba(22,139,255,0.32)]">
           <button
             type="button"
             onClick={onContinue}
-            className="relative w-full py-3 px-6 clip-continue-br cyber-primary-btn hover:brightness-108 active:scale-[0.98] text-[#070B12] font-tech font-black text-[clamp(16px,4.5vw,18px)] tracking-[0.16em] sm:tracking-[0.18em] uppercase cursor-pointer transition-all duration-200 flex items-center justify-center gap-2.5 overflow-hidden group"
+            className="relative w-full py-3.5 px-6 clip-continue-br bg-gradient-to-r from-[#00E1FF] via-[#5EE2FF] to-[#3B97FF] hover:brightness-105 active:scale-[0.99] text-[#050A12] font-tech font-black text-[17px] tracking-[0.22em] uppercase cursor-pointer transition-all duration-200 flex items-center justify-center gap-3 overflow-hidden group shadow-[inset_0_1px_1px_rgba(255,255,255,0.65)]"
           >
-            {/* Top-Half Glossy Reflection */}
-            <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/25 to-transparent pointer-events-none" />
-            {/* Continuous Diagonal Mirror Sheen */}
-            <span className="absolute inset-0 w-1/3 bg-gradient-to-r from-transparent via-white/36 to-transparent pointer-events-none animate-sheen" />
+            {/* Top-Half Glossy Glass Reflection */}
+            <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/35 to-transparent pointer-events-none" />
 
-            <span className="relative z-10 drop-shadow-[0_1px_0_rgba(255,255,255,0.28)]">
+            {/* Continuous Diagonal Super Shine Sweeping Across */}
+            <span className="absolute inset-0 w-1/2 bg-gradient-to-r from-transparent via-white/50 to-transparent pointer-events-none animate-getkey-super-shine" />
+
+            <span className="relative z-10 font-black text-[#050A12]">
               {settings.introVideoButtonText || 'CONTINUE'}
             </span>
-            <span className="relative z-10 inline-block animate-gp-arrow text-[18px] leading-none font-black">
+            <span className="relative z-10 inline-block animate-gp-arrow text-[18px] leading-none font-black text-[#050A12]">
               →
             </span>
           </button>

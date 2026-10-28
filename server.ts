@@ -11,7 +11,14 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
-app.use(express.json({ limit: '2000mb' }));
+app.use(
+  express.json({
+    limit: '2000mb',
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf.toString('utf8');
+    }
+  })
+);
 app.use(express.urlencoded({ extended: true, limit: '2000mb' }));
 
 // Ensure local cache directories exist (falls back to /tmp on read-only serverless filesystems like Vercel)
@@ -170,6 +177,9 @@ export interface PaymentOrder {
   tranzupiRef?: string;
   paymentSessionId?: string;
   cashfreeMode?: 'production' | 'sandbox';
+  cashfreeQrCode?: string;
+  expiresAt?: string;
+  rejectionReason?: string;
 }
 
 const DEFAULT_ANNOUNCEMENT_LINES = [
@@ -538,6 +548,59 @@ function verifyAdminToken(token?: string | null): boolean {
     return false;
   }
 }
+
+// Signed Order Claim Token for /key-success retrieval (prevents URL tampering or unauthorized key access)
+function issueOrderClaimToken(orderId: string, amount: number, currency = 'INR'): string {
+  const payload = JSON.stringify({
+    orderId: String(orderId).trim(),
+    amount: Number(amount),
+    currency: String(currency || 'INR').toUpperCase(),
+    iat: Date.now(),
+    exp: Date.now() + 24 * 60 * 60 * 1000
+  });
+  const b64 = Buffer.from(payload).toString('base64url');
+  const sig = crypto
+    .createHmac('sha256', ADMIN_SIGNING_SECRET)
+    .update(`claim:${b64}`)
+    .digest('base64url');
+  return `${b64}.${sig}`;
+}
+
+function verifyOrderClaimToken(
+  orderId: string,
+  amount: number,
+  currency = 'INR',
+  token?: string | null
+): boolean {
+  if (!token || typeof token !== 'string') return false;
+  const parts = token.trim().split('.');
+  if (parts.length !== 2) return false;
+  const [b64, sig] = parts;
+  const expectedSig = crypto
+    .createHmac('sha256', ADMIN_SIGNING_SECRET)
+    .update(`claim:${b64}`)
+    .digest('base64url');
+  const sigBuf = Buffer.from(sig);
+  const expBuf = Buffer.from(expectedSig);
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+    return false;
+  }
+  try {
+    const parsed = JSON.parse(Buffer.from(b64, 'base64url').toString('utf-8'));
+    if (parsed.exp && Date.now() > Number(parsed.exp)) return false;
+    if (String(parsed.orderId || '').trim().toUpperCase() !== String(orderId).trim().toUpperCase()) {
+      return false;
+    }
+    if (Math.abs(Number(parsed.amount) - Number(amount)) > 0.01) return false;
+    if (String(parsed.currency || 'INR').toUpperCase() !== String(currency || 'INR').toUpperCase()) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 
 function requireAdminAuth(req: Request, res: Response, next: express.NextFunction) {
   const headerToken =
@@ -2511,31 +2574,300 @@ app.delete('/api/admin/keys/:id', (req: Request, res: Response) => {
 });
 
 // ==========================================
-// CASHFREE V3 DYNAMIC UPI QR & TRANZUPI GATEWAY INTEGRATION
+// REAL CASHFREE PG V3 GATEWAY INTEGRATION
 // ==========================================
-
-const CASHFREE_APP_ID = process.env.CASHFREE_APP_ID || '';
-const CASHFREE_SECRET_KEY = process.env.CASHFREE_SECRET_KEY || '';
-const CASHFREE_ENV: 'production' | 'sandbox' =
-  (process.env.CASHFREE_ENV || 'production').toLowerCase() === 'sandbox' ? 'sandbox' : 'production';
-const CASHFREE_API_BASE =
-  CASHFREE_ENV === 'sandbox' ? 'https://sandbox.cashfree.com/pg' : 'https://api.cashfree.com/pg';
 
 const TRANZUPI_API_KEY = process.env.TRANZUPI_API_KEY || '';
 const TRANZUPI_SECRET_TOKEN = process.env.TRANZUPI_SECRET_TOKEN || '';
-const TRANZUPI_BASE_URL = process.env.TRANZUPI_BASE_URL || 'https://api.tranzupi.com';
 const TRANZUPI_MERCHANT_VPA = process.env.TRANZUPI_MERCHANT_VPA || '';
 
-// Shared Create Order Handler for /api/payments/create-order and /api/create-order
+function resolveCashfreeConfig(): {
+  appId: string;
+  secretKey: string;
+  env: 'production' | 'sandbox';
+  apiBase: string;
+  configured: boolean;
+  missingCredentials: string[];
+} {
+  const rawAppId = (
+    process.env.CASHFREE_APP_ID ||
+    process.env.CASHFREE_CLIENT_ID ||
+    ''
+  ).trim();
+  const rawSecretKey = (
+    process.env.CASHFREE_SECRET_KEY ||
+    process.env.CASHFREE_CLIENT_SECRET ||
+    ''
+  ).trim();
+  const rawEnv = (
+    process.env.CASHFREE_ENV ||
+    process.env.CASHFREE_MODE ||
+    ''
+  )
+    .trim()
+    .toLowerCase();
+
+  const appIdValid = Boolean(
+    rawAppId &&
+      rawAppId !== 'YOUR_CASHFREE_APP_ID' &&
+      rawAppId !== 'MY_CASHFREE_APP_ID'
+  );
+  const secretKeyValid = Boolean(
+    rawSecretKey &&
+      rawSecretKey !== 'YOUR_CASHFREE_SECRET_KEY' &&
+      rawSecretKey !== 'MY_CASHFREE_SECRET_KEY'
+  );
+
+  const missingCredentials: string[] = [];
+  if (!appIdValid) missingCredentials.push('CASHFREE_APP_ID');
+  if (!secretKeyValid) missingCredentials.push('CASHFREE_SECRET_KEY');
+
+  let env: 'production' | 'sandbox' = 'production';
+  if (
+    rawEnv === 'sandbox' ||
+    rawEnv === 'test' ||
+    rawSecretKey.includes('_test_') ||
+    rawAppId.toUpperCase().startsWith('TEST')
+  ) {
+    env = 'sandbox';
+  }
+  if (rawSecretKey.includes('_prod_') && rawEnv !== 'sandbox' && rawEnv !== 'test') {
+    env = 'production';
+  }
+
+  const apiBase =
+    env === 'sandbox'
+      ? 'https://sandbox.cashfree.com/pg'
+      : 'https://api.cashfree.com/pg';
+
+  return {
+    appId: appIdValid ? rawAppId : '',
+    secretKey: secretKeyValid ? rawSecretKey : '',
+    env,
+    apiBase,
+    configured: appIdValid && secretKeyValid,
+    missingCredentials
+  };
+}
+
+
+interface TrustedPlanData {
+  id: string;
+  name: string;
+  priceINR: number;
+  currency: string;
+  durationValue: number;
+  durationUnit: 'minutes' | 'hours' | 'days' | 'lifetime';
+  validityLabel: string;
+}
+
+function resolveTrustedServerPlan(
+  settings: SiteSettings,
+  requestedPlanId?: string
+): TrustedPlanData | null {
+  const rawPlans =
+    Array.isArray(settings.keyPlans) && settings.keyPlans.length > 0
+      ? settings.keyPlans
+      : Array.isArray((settings.buttonSettings as any)?.keyPlans) &&
+        (settings.buttonSettings as any).keyPlans.length > 0
+      ? ((settings.buttonSettings as any).keyPlans as PurchasePlan[])
+      : null;
+
+  if (rawPlans && rawPlans.length > 0) {
+    const cleanId = String(requestedPlanId || '').trim();
+    const matched = cleanId
+      ? rawPlans.find(p => p.id === cleanId)
+      : rawPlans.find(
+          p => p.available && typeof p.priceINR === 'number' && Number.isFinite(p.priceINR) && p.priceINR > 0
+        );
+
+    if (
+      !matched ||
+      !matched.available ||
+      typeof matched.priceINR !== 'number' ||
+      !Number.isFinite(matched.priceINR) ||
+      matched.priceINR <= 0
+    ) {
+      return null;
+    }
+
+    const unit: 'minutes' | 'hours' | 'days' | 'lifetime' =
+      matched.durationUnit && ['minutes', 'hours', 'days', 'lifetime'].includes(matched.durationUnit)
+        ? matched.durationUnit
+        : 'days';
+    const durVal =
+      unit === 'lifetime'
+        ? 0
+        : typeof matched.durationValue === 'number' &&
+          Number.isFinite(matched.durationValue) &&
+          matched.durationValue > 0
+        ? matched.durationValue
+        : Number(settings.keySaleDurationDays) || 7;
+
+    if (unit !== 'lifetime' && durVal <= 0) {
+      return null;
+    }
+
+    const validityLabel =
+      unit === 'lifetime'
+        ? 'Lifetime Validity'
+        : `${durVal} ${unit.charAt(0).toUpperCase() + unit.slice(1, -1)}${durVal === 1 ? '' : 's'}`;
+
+    return {
+      id: matched.id || 'plan_standard_30d',
+      name: (matched.name || 'REVOX ACCESS KEY').trim(),
+      priceINR: Number(matched.priceINR.toFixed(2)),
+      currency: 'INR',
+      durationValue: durVal,
+      durationUnit: unit,
+      validityLabel
+    };
+  }
+
+  // Fallback to primary configured plan in SiteSettings
+  const existingPrice =
+    typeof settings.keyPriceINR === 'number' && settings.keyPriceINR > 0
+      ? settings.keyPriceINR
+      : typeof settings.buttonSettings?.keyPriceINR === 'number' &&
+        settings.buttonSettings.keyPriceINR > 0
+      ? settings.buttonSettings.keyPriceINR
+      : 99;
+
+  const existingDuration =
+    typeof settings.keySaleDurationDays === 'number' && settings.keySaleDurationDays > 0
+      ? settings.keySaleDurationDays
+      : typeof settings.buttonSettings?.keySaleDurationDays === 'number' &&
+        settings.buttonSettings.keySaleDurationDays > 0
+      ? settings.buttonSettings.keySaleDurationDays
+      : 7;
+
+  if (requestedPlanId && requestedPlanId !== 'plan_standard_30d') {
+    return null;
+  }
+
+  return {
+    id: 'plan_standard_30d',
+    name: 'REVOX ACCESS KEY',
+    priceINR: Number(existingPrice.toFixed(2)),
+    currency: 'INR',
+    durationValue: existingDuration,
+    durationUnit: 'days',
+    validityLabel: `${existingDuration} Day${existingDuration === 1 ? '' : 's'}`
+  };
+}
+
+// Public endpoint to check Cashfree gateway status (never exposes secret keys)
+app.get('/api/payments/gateway-status', (_req: Request, res: Response) => {
+  const cf = resolveCashfreeConfig();
+  const settings = getSettings();
+  return res.json({
+    success: true,
+    gateway: 'cashfree',
+    configured: cf.configured,
+    cashfreeConfigured: cf.configured,
+    mode: cf.env,
+    missingCredentials: cf.missingCredentials,
+    salesEnabled: settings.keySalesEnabled !== false
+  });
+});
+
+// Secure Access Key Retrieval Endpoint for /key-success
+// Validates signed claimToken + verified payment record, prevents unauthorized access & duplicate key generation
+app.post('/api/payments/claim-key', async (req: Request, res: Response) => {
+  const rawOrderId = String(req.body?.orderId || req.body?.order_id || '').trim();
+  const claimToken = String(
+    req.body?.claimToken || req.headers['x-claim-token'] || ''
+  ).trim();
+
+  if (!rawOrderId || !claimToken) {
+    return res.status(401).json({
+      success: false,
+      verified: false,
+      code: 'UNAUTHORIZED_ACCESS',
+      message: 'Unauthorized access. A verified payment session is required to view an access key.'
+    });
+  }
+
+  const sales = getSales();
+  let order = sales.find(s => s.orderId.toUpperCase() === rawOrderId.toUpperCase());
+
+  if (!order) {
+    const remoteOrder = await firestoreGetDoc('keySales', rawOrderId);
+    if (remoteOrder && remoteOrder.orderId) {
+      order = remoteOrder as PaymentOrder;
+      sales.unshift(order);
+    }
+  }
+
+  if (!order) {
+    return res.status(404).json({
+      success: false,
+      verified: false,
+      code: 'ORDER_NOT_FOUND',
+      message: 'Verified purchase record could not be found.'
+    });
+  }
+
+  // Validate cryptographic claim token bound to orderId, amount, and currency
+  const isTokenValid = verifyOrderClaimToken(
+    order.orderId,
+    order.amount,
+    order.currency || 'INR',
+    claimToken
+  );
+
+  if (!isTokenValid || order.paymentStatus !== 'SUCCESS') {
+    return res.status(403).json({
+      success: false,
+      verified: false,
+      code: 'PAYMENT_NOT_VERIFIED',
+      message: 'Payment has not been verified for this order.'
+    });
+  }
+
+  // Idempotent key assignment: never generate duplicate keys if the order already has one
+  if (!order.assignedKey) {
+    assignKeyToOrder(order);
+    saveSales(sales, order);
+  }
+
+  const unit = order.planDurationUnit || 'days';
+  const val = Number(order.planDurationValue) || 7;
+  const validityLabel =
+    unit === 'lifetime'
+      ? 'Lifetime'
+      : unit === 'minutes'
+      ? `${val} ${val === 1 ? 'Minute' : 'Minutes'}`
+      : unit === 'hours'
+      ? `${val} ${val === 1 ? 'Hour' : 'Hours'}`
+      : `${val} ${val === 1 ? 'Day' : 'Days'}`;
+
+  return res.json({
+    success: true,
+    verified: true,
+    keyReady: Boolean(order.assignedKey),
+    assignedKey: order.assignedKey || null,
+    order: {
+      orderId: order.orderId,
+      planId: order.planId,
+      planName: order.planName || 'REVOX ACCESS KEY',
+      planDurationValue: val,
+      planDurationUnit: unit,
+      validityLabel,
+      amount: order.amount,
+      currency: order.currency || 'INR',
+      paymentStatus: 'VERIFIED',
+      paidAt: order.paidAt || order.purchasedAt,
+      assignedKey: order.assignedKey || null
+    }
+  });
+});
+
+
+// Create Order Handler for /api/payments/create-order and /api/create-order
+// Security: Strictly calculates amount from server-side trusted plan data; never trusts browser amount.
 async function handleCreatePaymentOrder(req: Request, res: Response) {
-  const {
-    planId,
-    customerName,
-    customerPhone,
-    amount: requestedAmount,
-    order_amount,
-    customer_details
-  } = req.body || {};
+  const { planId, customerName, customerPhone, customer_details, reuseOrderId } = req.body || {};
   const settings = getSettings();
 
   if (settings.keySalesEnabled === false) {
@@ -2546,175 +2878,473 @@ async function handleCreatePaymentOrder(req: Request, res: Response) {
     });
   }
 
-  // Resolve selected plan from settings.keyPlans or fallback to primary configured keyPriceINR (default 99.00)
-  let amount = Number(order_amount ?? requestedAmount ?? settings.keyPriceINR) || 99;
-  let resolvedPlanId = String(planId || 'plan_standard_30d');
-  let resolvedPlanName = 'REVOX ACCESS KEY';
-  let resolvedDurationValue = Number(settings.keySaleDurationDays) || 30;
-  let resolvedDurationUnit: 'minutes' | 'hours' | 'days' | 'lifetime' = 'days';
+  // 1. Validate selected plan and price from trusted backend configuration ONLY
+  const trustedPlan = resolveTrustedServerPlan(settings, planId);
+  if (!trustedPlan) {
+    return res.status(400).json({
+      success: false,
+      code: 'INVALID_PLAN',
+      message: 'The selected plan is not available or has not been configured properly.'
+    });
+  }
 
-  if (Array.isArray(settings.keyPlans) && settings.keyPlans.length > 0) {
-    const matchedPlan =
-      settings.keyPlans.find(p => p.id === resolvedPlanId) ||
-      settings.keyPlans.find(p => p.available && typeof p.priceINR === 'number' && p.priceINR > 0);
-    if (matchedPlan && matchedPlan.available && typeof matchedPlan.priceINR === 'number' && matchedPlan.priceINR > 0) {
-      resolvedPlanId = matchedPlan.id;
-      amount = matchedPlan.priceINR;
-      resolvedPlanName = matchedPlan.name || 'REVOX ACCESS KEY';
-      resolvedDurationUnit = matchedPlan.durationUnit || 'days';
-      resolvedDurationValue =
-        matchedPlan.durationUnit === 'lifetime'
-          ? 0
-          : Number(matchedPlan.durationValue) || 30;
+  // 2. Verify Cashfree credentials are present on server
+  const cf = resolveCashfreeConfig();
+  if (!cf.configured) {
+    const missingList = cf.missingCredentials.join(' and ');
+    return res.status(503).json({
+      success: false,
+      code: 'CASHFREE_NOT_CONFIGURED',
+      missingCredentials: cf.missingCredentials,
+      message: `Cashfree API credentials (${missingList || 'CASHFREE_APP_ID / CASHFREE_SECRET_KEY'}) are not configured on the server.`
+    });
+  }
+
+  const sales = getSales();
+
+  // 3. Prevent duplicate order creation if an active pending order for the same plan already exists
+  if (reuseOrderId && typeof reuseOrderId === 'string') {
+    const cleanReuseId = reuseOrderId.trim();
+    const existingOrder = sales.find(
+      s =>
+        s.orderId === cleanReuseId &&
+        s.paymentStatus === 'PENDING' &&
+        s.planId === trustedPlan.id &&
+        Math.abs(Number(s.amount) - trustedPlan.priceINR) < 0.01 &&
+        s.paymentSessionId &&
+        s.cashfreeMode === cf.env &&
+        Date.now() - new Date(s.purchasedAt).getTime() < 25 * 60 * 1000
+    );
+
+    if (existingOrder) {
+      return res.json({
+        success: true,
+        reused: true,
+        gateway: 'cashfree',
+        gatewayConfigured: true,
+        cashfreeActive: true,
+        order_id: existingOrder.orderId,
+        order_amount: existingOrder.amount,
+        order_currency: existingOrder.currency,
+        payment_session_id: existingOrder.paymentSessionId,
+        cashfree_mode: existingOrder.cashfreeMode,
+        order: {
+          orderId: existingOrder.orderId,
+          planId: existingOrder.planId,
+          planName: existingOrder.planName,
+          planDurationValue: existingOrder.planDurationValue,
+          planDurationUnit: existingOrder.planDurationUnit,
+          amount: existingOrder.amount,
+          currency: existingOrder.currency,
+          paymentStatus: existingOrder.paymentStatus,
+          purchasedAt: existingOrder.purchasedAt,
+          paymentSessionId: existingOrder.paymentSessionId,
+          cashfreeMode: existingOrder.cashfreeMode,
+          keyDeliveryStatus: existingOrder.keyDeliveryStatus
+        }
+      });
     }
   }
 
-  if (!Number.isFinite(amount) || amount <= 0) {
-    amount = 99.0;
-  }
-
-  const orderId = `order_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
-  const sales = getSales();
-  const merchantVpa = TRANZUPI_MERCHANT_VPA || 'ashishseller@upi';
-  const defaultUpiIntent = `upi://pay?pa=${encodeURIComponent(merchantVpa)}&pn=${encodeURIComponent(
-    settings.panelName || 'REVOX PANEL'
-  )}&am=${Number(amount).toFixed(2)}&cu=INR&tn=${encodeURIComponent(`Key-${orderId}`)}`;
-
+  const orderId = `order_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
   const resolvedCustomerPhone =
     String(customer_details?.customer_phone || customerPhone || '')
       .replace(/[^0-9]/g, '')
       .slice(-10) || '9876543210';
   const resolvedCustomerId =
-    String(customer_details?.customer_id || '').trim() || `cust_${Date.now()}`;
+    String(customer_details?.customer_id || '')
+      .replace(/[^a-zA-Z0-9_-]/g, '')
+      .slice(0, 45) || `cust_${Date.now()}_${crypto.randomBytes(2).toString('hex')}`;
   const resolvedCustomerName =
-    String(customer_details?.customer_name || customerName || 'VIP Customer').trim();
+    String(customer_details?.customer_name || customerName || 'REVOX Customer')
+      .trim()
+      .slice(0, 80) || 'REVOX Customer';
 
-  const newOrder: PaymentOrder = {
-    orderId,
-    planId: resolvedPlanId,
-    planName: resolvedPlanName,
-    planDurationValue: resolvedDurationValue,
-    planDurationUnit: resolvedDurationUnit,
-    amount: Number(Number(amount).toFixed(2)),
-    currency: 'INR',
-    paymentStatus: 'PENDING',
-    customerName: resolvedCustomerName,
-    customerPhone: resolvedCustomerPhone,
-    purchasedAt: new Date().toISOString(),
-    keyDeliveryStatus: 'PENDING',
-    upiIntentUrl: defaultUpiIntent,
-    cashfreeMode: CASHFREE_ENV
+  // Determine return_url pointing to the dedicated /checkout route (Cashfree production requires https://)
+  const appUrlEnv = (process.env.APP_URL || '').trim().replace(/\/$/, '');
+  const originHeader = (req.headers.origin || '').trim().replace(/\/$/, '');
+  const host = (req.get('host') || '').trim();
+  const isLocalHost = host.startsWith('localhost') || host.startsWith('127.0.0.1');
+
+  let baseOrigin = '';
+  if (originHeader && originHeader.startsWith('https://')) {
+    baseOrigin = originHeader;
+  } else if (appUrlEnv && appUrlEnv.startsWith('https://')) {
+    baseOrigin = appUrlEnv;
+  } else if (host && !isLocalHost) {
+    baseOrigin = `https://${host}`;
+  } else if (originHeader) {
+    baseOrigin = originHeader.replace(/^http:\/\//i, 'https://');
+  } else {
+    baseOrigin = 'https://ais-dev-pbiki4g6jrqwdvcafxlw5o-412645379901.asia-southeast1.run.app';
+  }
+
+  const returnUrl = `${baseOrigin}/checkout?order_id=${encodeURIComponent(orderId)}`;
+
+  const cfPayload = {
+    order_id: orderId,
+    order_amount: trustedPlan.priceINR,
+    order_currency: trustedPlan.currency,
+    customer_details: {
+      customer_id: resolvedCustomerId,
+      customer_phone: resolvedCustomerPhone,
+      customer_name: resolvedCustomerName
+    },
+    order_meta: {
+      return_url: returnUrl
+    },
+    order_note: `${trustedPlan.name} - ${trustedPlan.validityLabel}`
   };
 
-  // 1. Cashfree PG V3 Order Creation (if CASHFREE_APP_ID & CASHFREE_SECRET_KEY are configured)
-  if (CASHFREE_APP_ID && CASHFREE_SECRET_KEY) {
-    try {
-      const cfPayload = {
-        order_id: orderId,
-        order_amount: Number(Number(amount).toFixed(2)),
-        order_currency: 'INR',
-        customer_details: {
-          customer_id: resolvedCustomerId,
-          customer_phone: resolvedCustomerPhone,
-          customer_name: resolvedCustomerName
-        }
-      };
+  try {
+    const cfRes = await fetch(`${cf.apiBase}/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-version': '2023-08-01',
+        'x-client-id': cf.appId,
+        'x-client-secret': cf.secretKey
+      },
+      body: JSON.stringify(cfPayload)
+    });
 
-      const cfRes = await fetch(`${CASHFREE_API_BASE}/orders`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-version': '2023-08-01',
-          'x-client-id': CASHFREE_APP_ID,
-          'x-client-secret': CASHFREE_SECRET_KEY
-        },
-        body: JSON.stringify(cfPayload)
+    const cfData = await cfRes.json().catch(() => ({}));
+
+    if (!cfRes.ok || !cfData?.payment_session_id) {
+      return res.status(cfRes.status >= 400 && cfRes.status < 600 ? cfRes.status : 502).json({
+        success: false,
+        code: cfData?.code || 'CASHFREE_ORDER_CREATION_FAILED',
+        type: cfData?.type || 'api_error',
+        cashfree_mode: cf.env,
+        message:
+          cfData?.message ||
+          'Cashfree could not create the payment order. Please verify your Cashfree merchant account and API keys.'
       });
-
-      const cfData = await cfRes.json().catch(() => ({}));
-      if (cfData && cfData.payment_session_id) {
-        newOrder.paymentSessionId = cfData.payment_session_id;
-      }
-      if (cfData && cfData.cf_order_id) {
-        newOrder.paymentId = String(cfData.cf_order_id);
-      }
-    } catch (err) {
-      console.warn('Cashfree order creation notice:', err);
     }
+
+    const newOrder: PaymentOrder = {
+      orderId,
+      paymentId: cfData.cf_order_id ? String(cfData.cf_order_id) : undefined,
+      planId: trustedPlan.id,
+      planName: trustedPlan.name,
+      planDurationValue: trustedPlan.durationValue,
+      planDurationUnit: trustedPlan.durationUnit,
+      amount: trustedPlan.priceINR,
+      currency: trustedPlan.currency,
+      paymentStatus: 'PENDING',
+      customerName: resolvedCustomerName,
+      customerPhone: resolvedCustomerPhone,
+      purchasedAt: new Date().toISOString(),
+      keyDeliveryStatus: 'PENDING',
+      paymentSessionId: cfData.payment_session_id,
+      cashfreeMode: cf.env
+    };
+
+    sales.unshift(newOrder);
+    saveSales(sales, newOrder);
+
+    return res.json({
+      success: true,
+      gateway: 'cashfree',
+      gatewayConfigured: true,
+      cashfreeActive: true,
+      order_id: newOrder.orderId,
+      order_amount: newOrder.amount,
+      order_currency: newOrder.currency,
+      payment_session_id: newOrder.paymentSessionId,
+      cashfree_mode: newOrder.cashfreeMode,
+      order: {
+        orderId: newOrder.orderId,
+        planId: newOrder.planId,
+        planName: newOrder.planName,
+        planDurationValue: newOrder.planDurationValue,
+        planDurationUnit: newOrder.planDurationUnit,
+        amount: newOrder.amount,
+        currency: newOrder.currency,
+        paymentStatus: newOrder.paymentStatus,
+        purchasedAt: newOrder.purchasedAt,
+        paymentSessionId: newOrder.paymentSessionId,
+        cashfreeMode: newOrder.cashfreeMode,
+        keyDeliveryStatus: newOrder.keyDeliveryStatus
+      }
+    });
+  } catch (err: any) {
+    console.error('Cashfree order creation error:', err);
+    return res.status(502).json({
+      success: false,
+      code: 'CASHFREE_NETWORK_ERROR',
+      cashfree_mode: cf.env,
+      message: 'Failed to communicate with Cashfree payment gateway. Please try again.'
+    });
   }
-
-  // 2. Optional TranzUPI fallback if configured
-  if (!newOrder.paymentSessionId && TRANZUPI_API_KEY && TRANZUPI_SECRET_TOKEN) {
-    try {
-      const response = await fetch(`${TRANZUPI_BASE_URL}/order/create`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': TRANZUPI_API_KEY,
-          'x-secret-token': TRANZUPI_SECRET_TOKEN
-        },
-        body: JSON.stringify({
-          amount: newOrder.amount,
-          currency: 'INR',
-          order_id: orderId,
-          merchant_vpa: merchantVpa,
-          note: `${resolvedPlanName} - ${orderId}`,
-          customer_name: resolvedCustomerName,
-          customer_phone: resolvedCustomerPhone
-        })
-      });
-
-      const gatewayData = await response.json().catch(() => ({}));
-
-      if (gatewayData.payment_url || gatewayData.data?.payment_url) {
-        newOrder.paymentUrl = gatewayData.payment_url || gatewayData.data?.payment_url;
-      }
-      if (gatewayData.upi_intent || gatewayData.data?.upi_intent) {
-        newOrder.upiIntentUrl = gatewayData.upi_intent || gatewayData.data?.upi_intent;
-      }
-      if (gatewayData.tranzupi_ref || gatewayData.data?.ref_id) {
-        newOrder.tranzupiRef = gatewayData.tranzupi_ref || gatewayData.data?.ref_id;
-      }
-    } catch (err) {
-      console.warn('TranzUPI gateway call notice:', err);
-    }
-  }
-
-  sales.unshift(newOrder);
-  saveSales(sales, newOrder);
-
-  return res.json({
-    success: true,
-    gatewayConfigured: true,
-    order_id: newOrder.orderId,
-    order_amount: newOrder.amount,
-    order_currency: newOrder.currency,
-    payment_session_id: newOrder.paymentSessionId || null,
-    cashfree_mode: newOrder.cashfreeMode,
-    order: {
-      orderId: newOrder.orderId,
-      planId: newOrder.planId,
-      planName: newOrder.planName,
-      planDurationValue: newOrder.planDurationValue,
-      planDurationUnit: newOrder.planDurationUnit,
-      amount: newOrder.amount,
-      currency: newOrder.currency,
-      paymentStatus: newOrder.paymentStatus,
-      purchasedAt: newOrder.purchasedAt,
-      paymentUrl: newOrder.paymentUrl,
-      upiIntentUrl: newOrder.upiIntentUrl,
-      paymentSessionId: newOrder.paymentSessionId,
-      cashfreeMode: newOrder.cashfreeMode
-    },
-    paymentUrl: newOrder.paymentUrl,
-    upiIntentUrl: newOrder.upiIntentUrl
-  });
 }
 
 app.post('/api/payments/create-order', handleCreatePaymentOrder);
 app.post('/api/create-order', handleCreatePaymentOrder);
 
-// API: Complete or Reject Payment Order & Generate Real 1-Device Locked Key
+// Shared Authoritative Cashfree Order Verification Helper
+async function verifyOrderWithCashfree(
+  order: PaymentOrder,
+  sales: PaymentOrder[],
+  userReportedCancel = false
+): Promise<{
+  verifiedSuccess: boolean;
+  paymentStatus: 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELLED';
+  cfOrderStatus: string;
+  verificationCategory: 'SUCCESS' | 'PENDING' | 'FAILED' | 'NETWORK_ERROR';
+  statusMessage: string;
+}> {
+  if (order.paymentStatus === 'SUCCESS') {
+    if (!order.assignedKey) {
+      assignKeyToOrder(order);
+      saveSales(sales, order);
+    }
+    return {
+      verifiedSuccess: true,
+      paymentStatus: 'SUCCESS',
+      cfOrderStatus: 'PAID',
+      verificationCategory: 'SUCCESS',
+      statusMessage: 'Payment verified successfully.'
+    };
+  }
+
+  const cf = resolveCashfreeConfig();
+  if (!cf.configured) {
+    return {
+      verifiedSuccess: false,
+      paymentStatus: order.paymentStatus,
+      cfOrderStatus: 'UNCONFIGURED',
+      verificationCategory: 'FAILED',
+      statusMessage: 'Cashfree API credentials are not configured on the server.'
+    };
+  }
+
+  // Use the mode stored on the order if present, otherwise current config mode
+  const apiBase =
+    order.cashfreeMode === 'sandbox'
+      ? 'https://sandbox.cashfree.com/pg'
+      : order.cashfreeMode === 'production'
+      ? 'https://api.cashfree.com/pg'
+      : cf.apiBase;
+
+  try {
+    // 1. Fetch Order Details from Cashfree
+    const cfOrderRes = await fetch(`${apiBase}/orders/${encodeURIComponent(order.orderId)}`, {
+      method: 'GET',
+      headers: {
+        'x-api-version': '2023-08-01',
+        'x-client-id': cf.appId,
+        'x-client-secret': cf.secretKey
+      }
+    });
+
+    const cfOrder = await cfOrderRes.json().catch(() => ({}));
+    if (!cfOrderRes.ok || !cfOrder?.order_id) {
+      const isServerOrGatewayTempError = cfOrderRes.status >= 500 || cfOrderRes.status === 429;
+      return {
+        verifiedSuccess: false,
+        paymentStatus: order.paymentStatus,
+        cfOrderStatus: isServerOrGatewayTempError ? 'NETWORK_ERROR' : 'ERROR',
+        verificationCategory: isServerOrGatewayTempError ? 'NETWORK_ERROR' : 'FAILED',
+        statusMessage: isServerOrGatewayTempError
+          ? 'Unable to check your payment status. Please try again.'
+          : 'We could not verify your payment. Please try again.'
+      };
+    }
+
+    // Security Check 1: Confirm order_id matches
+    if (String(cfOrder.order_id).trim() !== order.orderId) {
+      return {
+        verifiedSuccess: false,
+        paymentStatus: 'FAILED',
+        cfOrderStatus: 'MISMATCH',
+        verificationCategory: 'FAILED',
+        statusMessage: 'We could not verify your payment. Please try again.'
+      };
+    }
+
+    // Security Check 2: Confirm amount and currency match original order
+    const cfAmount = Number(cfOrder.order_amount);
+    const cfCurrency = String(cfOrder.order_currency || 'INR').toUpperCase();
+    if (
+      !Number.isFinite(cfAmount) ||
+      Math.abs(cfAmount - Number(order.amount)) > 0.01 ||
+      cfCurrency !== String(order.currency || 'INR').toUpperCase()
+    ) {
+      order.paymentStatus = 'FAILED';
+      order.rejectionReason = 'Order amount or currency mismatch detected during verification.';
+      saveSales(sales, order);
+      return {
+        verifiedSuccess: false,
+        paymentStatus: 'FAILED',
+        cfOrderStatus: 'AMOUNT_MISMATCH',
+        verificationCategory: 'FAILED',
+        statusMessage: 'We could not verify your payment. Please try again.'
+      };
+    }
+
+    // 2. Fetch Payment Transactions for this Order from Cashfree
+    let cfPayments: any[] = [];
+    try {
+      const cfPayRes = await fetch(
+        `${apiBase}/orders/${encodeURIComponent(order.orderId)}/payments`,
+        {
+          method: 'GET',
+          headers: {
+            'x-api-version': '2023-08-01',
+            'x-client-id': cf.appId,
+            'x-client-secret': cf.secretKey
+          }
+        }
+      );
+      const payData = await cfPayRes.json().catch(() => []);
+      if (Array.isArray(payData)) {
+        cfPayments = payData;
+      }
+    } catch {
+      // Proceed with order status if payments list endpoint is unavailable
+    }
+
+    const cfOrderStatus = String(cfOrder.order_status || '').toUpperCase();
+    const successfulPayment = cfPayments.find(
+      p => String(p?.payment_status || '').toUpperCase() === 'SUCCESS'
+    );
+    const pendingPayment = cfPayments.find(p =>
+      ['PENDING', 'NOT_ATTEMPTED', 'AUTHORIZED'].includes(
+        String(p?.payment_status || '').toUpperCase()
+      )
+    );
+    const latestAttempt = cfPayments.length > 0 ? cfPayments[0] : null;
+    const latestAttemptStatus = latestAttempt
+      ? String(latestAttempt.payment_status || '').toUpperCase()
+      : '';
+
+    // CASE 1: Payment Confirmed PAID / SUCCESS
+    if (cfOrderStatus === 'PAID') {
+      if (
+        successfulPayment &&
+        Math.abs(Number(successfulPayment.payment_amount) - Number(order.amount)) > 0.01
+      ) {
+        order.paymentStatus = 'FAILED';
+        order.rejectionReason = 'Verified payment amount does not match the required order amount.';
+        saveSales(sales, order);
+        return {
+          verifiedSuccess: false,
+          paymentStatus: 'FAILED',
+          cfOrderStatus: 'AMOUNT_MISMATCH',
+          verificationCategory: 'FAILED',
+          statusMessage: 'We could not verify your payment. Please try again.'
+        };
+      }
+
+      const wasAlreadyAssigned = Boolean(order.assignedKey);
+      order.paymentStatus = 'SUCCESS';
+      if (successfulPayment?.cf_payment_id) {
+        order.paymentId = String(successfulPayment.cf_payment_id);
+      }
+      assignKeyToOrder(order);
+      saveSales(sales, order);
+
+      if (!wasAlreadyAssigned) {
+        recordAdminLog({
+          action: 'KEY_GENERATED',
+          label: 'Website key purchase (Cashfree Verified)',
+          customerName: order.customerName || 'Website Customer',
+          maskedKey: maskKeyForAudit(order.assignedKey || '', false),
+          keyId: order.assignedKeyId || order.assignedKey || '',
+          details: `Order ${order.orderId} (₹${order.amount}) — ${order.planDurationValue || 7} ${(order.planDurationUnit || 'days').toUpperCase()}`
+        });
+      }
+
+      return {
+        verifiedSuccess: true,
+        paymentStatus: 'SUCCESS',
+        cfOrderStatus: 'PAID',
+        verificationCategory: 'SUCCESS',
+        statusMessage: 'Payment verified successfully.'
+      };
+    }
+
+    // CASE 2: Payment is currently pending confirmation (never mark pending payments as failed!)
+    if (pendingPayment && cfOrderStatus === 'ACTIVE') {
+      order.paymentStatus = 'PENDING';
+      saveSales(sales, order);
+      return {
+        verifiedSuccess: false,
+        paymentStatus: 'PENDING',
+        cfOrderStatus: 'PENDING',
+        verificationCategory: 'PENDING',
+        statusMessage: 'Your payment is awaiting confirmation. Please check again shortly.'
+      };
+    }
+
+    // CASE 3: Payment Cancelled or User Dropped
+    if (
+      cfOrderStatus === 'CANCELLED' ||
+      latestAttemptStatus === 'USER_DROPPED' ||
+      latestAttemptStatus === 'CANCELLED' ||
+      (userReportedCancel && !pendingPayment)
+    ) {
+      const cancelMsg =
+        latestAttempt?.payment_message || 'We could not verify your payment. Please try again.';
+      order.paymentStatus = 'CANCELLED';
+      order.rejectionReason = cancelMsg;
+      saveSales(sales, order);
+      return {
+        verifiedSuccess: false,
+        paymentStatus: 'CANCELLED',
+        cfOrderStatus: cfOrderStatus || 'CANCELLED',
+        verificationCategory: 'FAILED',
+        statusMessage: 'We could not verify your payment. Please try again.'
+      };
+    }
+
+    // CASE 4: Payment Failed or Order Expired/Terminated
+    if (
+      cfOrderStatus === 'EXPIRED' ||
+      cfOrderStatus === 'TERMINATED' ||
+      latestAttemptStatus === 'FAILED'
+    ) {
+      const failMsg =
+        latestAttempt?.payment_message ||
+        (cfOrderStatus === 'EXPIRED'
+          ? 'The payment session has expired.'
+          : 'We could not verify your payment. Please try again.');
+      order.paymentStatus = 'FAILED';
+      order.rejectionReason = failMsg;
+      saveSales(sales, order);
+      return {
+        verifiedSuccess: false,
+        paymentStatus: 'FAILED',
+        cfOrderStatus: cfOrderStatus || 'FAILED',
+        verificationCategory: 'FAILED',
+        statusMessage: 'We could not verify your payment. Please try again.'
+      };
+    }
+
+    // CASE 5: Order is still ACTIVE / PENDING awaiting confirmation
+    order.paymentStatus = 'PENDING';
+    saveSales(sales, order);
+    return {
+      verifiedSuccess: false,
+      paymentStatus: 'PENDING',
+      cfOrderStatus: cfOrderStatus || 'ACTIVE',
+      verificationCategory: 'PENDING',
+      statusMessage: 'Your payment is awaiting confirmation. Please check again shortly.'
+    };
+  } catch (err) {
+    console.warn('Cashfree verification request warning:', err);
+    return {
+      verifiedSuccess: false,
+      paymentStatus: order.paymentStatus,
+      cfOrderStatus: 'NETWORK_ERROR',
+      verificationCategory: 'NETWORK_ERROR',
+      statusMessage: 'Unable to check your payment status. Please try again.'
+    };
+  }
+}
+
+// API: Complete or Cancel Payment Order — STRICT REAL CASHFREE VERIFICATION ONLY
 app.post('/api/payments/complete-order', async (req: Request, res: Response) => {
   const { orderId, action } = req.body || {};
   if (!orderId) {
@@ -2733,58 +3363,59 @@ app.post('/api/payments/complete-order', async (req: Request, res: Response) => 
   }
 
   if (!order) {
-    return res.status(404).json({ success: false, message: 'Payment order not found' });
-  }
-
-  if (action === 'reject') {
-    order.paymentStatus = 'FAILED';
-    saveSales(sales, order);
-    return res.json({
-      success: true,
-      order_status: 'FAILED',
-      order: {
-        orderId: order.orderId,
-        amount: order.amount,
-        currency: order.currency,
-        paymentStatus: order.paymentStatus,
-        purchasedAt: order.purchasedAt,
-        keyDeliveryStatus: order.keyDeliveryStatus
-      }
+    return res.status(404).json({
+      success: false,
+      verification_category: 'FAILED',
+      message: 'We could not verify your payment. Please try again.'
     });
   }
 
-  // Confirm payment & generate real access key with the plan's exact validity
-  order.paymentStatus = 'SUCCESS';
-  assignKeyToOrder(order);
-  saveSales(sales, order);
+  const isCancelAction = action === 'reject' || action === 'cancel';
+  const verification = await verifyOrderWithCashfree(order, sales, isCancelAction);
 
-  recordAdminLog({
-    action: 'KEY_GENERATED',
-    label: 'Website key purchase',
-    customerName: order.customerName || 'Website Customer',
-    maskedKey: maskKeyForAudit(order.assignedKey || '', false),
-    keyId: order.assignedKeyId || order.assignedKey || '',
-    details: `Order ${order.orderId} (₹${order.amount}) — ${order.planDurationValue || 30} ${(order.planDurationUnit || 'days').toUpperCase()}`
-  });
+  const sanitizedOrder = {
+    orderId: order.orderId,
+    planId: order.planId,
+    planName: order.planName,
+    planDurationValue: order.planDurationValue,
+    planDurationUnit: order.planDurationUnit,
+    amount: order.amount,
+    currency: order.currency,
+    paymentStatus: order.paymentStatus,
+    purchasedAt: order.purchasedAt,
+    paidAt: order.paidAt,
+    keyDeliveryStatus: order.keyDeliveryStatus,
+    paymentSessionId: order.paymentSessionId,
+    cashfreeMode: order.cashfreeMode,
+    rejectionReason: order.rejectionReason,
+    assignedKey: order.paymentStatus === 'SUCCESS' ? order.assignedKey : undefined
+  };
+
+  if (!verification.verifiedSuccess) {
+    return res.status(isCancelAction ? 200 : 402).json({
+      success: isCancelAction,
+      verified: false,
+      order_status: verification.cfOrderStatus,
+      payment_status: verification.paymentStatus,
+      verification_category: verification.verificationCategory,
+      message: verification.statusMessage,
+      order: sanitizedOrder
+    });
+  }
+
+  const claimToken = issueOrderClaimToken(order.orderId, order.amount, order.currency || 'INR');
 
   return res.json({
     success: true,
+    verified: true,
+    status: 'paid',
     order_status: 'PAID',
-    order: {
-      orderId: order.orderId,
-      planId: order.planId,
-      planName: order.planName,
-      planDurationValue: order.planDurationValue,
-      planDurationUnit: order.planDurationUnit,
-      amount: order.amount,
-      currency: order.currency,
-      paymentStatus: order.paymentStatus,
-      purchasedAt: order.purchasedAt,
-      paidAt: order.paidAt,
-      keyDeliveryStatus: order.keyDeliveryStatus,
-      assignedKey: order.assignedKey
-    },
-    assignedKey: order.assignedKey
+    payment_status: 'SUCCESS',
+    verification_category: 'SUCCESS',
+    message: verification.statusMessage,
+    claimToken,
+    order: sanitizedOrder,
+    assignedKey: sanitizedOrder.assignedKey
   });
 });
 
@@ -2792,7 +3423,11 @@ app.post('/api/payments/complete-order', async (req: Request, res: Response) => 
 async function handleCheckOrderStatus(req: Request, res: Response) {
   const rawOrderId = String(req.params.orderId || req.query.order_id || req.query.orderId || '').trim();
   if (!rawOrderId) {
-    return res.status(400).json({ success: false, message: 'Missing order_id' });
+    return res.status(400).json({
+      success: false,
+      verification_category: 'FAILED',
+      message: 'Missing order_id'
+    });
   }
 
   const sales = getSales();
@@ -2809,74 +3444,19 @@ async function handleCheckOrderStatus(req: Request, res: Response) {
   if (!order) {
     return res.status(404).json({
       success: false,
+      verified: false,
       order_status: 'NOT_FOUND',
-      message: 'Payment order not found'
+      payment_status: 'NOT_FOUND',
+      verification_category: 'FAILED',
+      message: 'We could not verify your payment. Please try again.'
     });
   }
 
-  // 1. Check Cashfree PG Order Status if order is PENDING and Cashfree credentials are set
-  if (order.paymentStatus === 'PENDING' && CASHFREE_APP_ID && CASHFREE_SECRET_KEY) {
-    try {
-      const cfRes = await fetch(`${CASHFREE_API_BASE}/orders/${encodeURIComponent(order.orderId)}`, {
-        method: 'GET',
-        headers: {
-          'x-api-version': '2023-08-01',
-          'x-client-id': CASHFREE_APP_ID,
-          'x-client-secret': CASHFREE_SECRET_KEY
-        }
-      });
-      const cfOrder = await cfRes.json().catch(() => ({}));
-      const cfStatus = String(cfOrder.order_status || '').toUpperCase();
+  const userCancelled =
+    req.query.cancelled === 'true' ||
+    req.body?.cancelled === true;
 
-      if (cfStatus === 'PAID' || cfStatus === 'SUCCESS') {
-        order.paymentStatus = 'SUCCESS';
-        assignKeyToOrder(order);
-        saveSales(sales, order);
-      } else if (['EXPIRED', 'TERMINATED', 'CANCELLED', 'FAILED'].includes(cfStatus)) {
-        order.paymentStatus = cfStatus === 'CANCELLED' ? 'CANCELLED' : 'FAILED';
-        saveSales(sales, order);
-      }
-    } catch (err) {
-      console.warn('Cashfree status check warning:', err);
-    }
-  }
-
-  // 2. Check TranzUPI Order Status if order is still PENDING and TranzUPI credentials are set
-  if (order.paymentStatus === 'PENDING' && TRANZUPI_API_KEY && TRANZUPI_SECRET_TOKEN) {
-    try {
-      const response = await fetch(`${TRANZUPI_BASE_URL}/order/status`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': TRANZUPI_API_KEY,
-          'x-secret-token': TRANZUPI_SECRET_TOKEN
-        },
-        body: JSON.stringify({
-          order_id: order.orderId,
-          tranzupi_ref: order.tranzupiRef
-        })
-      });
-
-      const gatewayRes = await response.json().catch(() => ({}));
-      const status = (gatewayRes.status || gatewayRes.payment_status || gatewayRes.data?.status || '').toUpperCase();
-
-      if (['SUCCESS', 'PAID', 'COMPLETED'].includes(status)) {
-        order.paymentStatus = 'SUCCESS';
-        assignKeyToOrder(order);
-        saveSales(sales, order);
-      } else if (['FAILED', 'CANCELLED', 'EXPIRED'].includes(status)) {
-        order.paymentStatus = status === 'CANCELLED' ? 'CANCELLED' : 'FAILED';
-        saveSales(sales, order);
-      }
-    } catch (err) {
-      console.warn('TranzUPI status check warning:', err);
-    }
-  }
-
-  if (order.paymentStatus === 'SUCCESS' && !order.assignedKey) {
-    assignKeyToOrder(order);
-    saveSales(sales, order);
-  }
+  const verification = await verifyOrderWithCashfree(order, sales, userCancelled);
 
   const sanitizedOrder = {
     orderId: order.orderId,
@@ -2892,19 +3472,25 @@ async function handleCheckOrderStatus(req: Request, res: Response) {
     keyDeliveryStatus: order.keyDeliveryStatus,
     paymentSessionId: order.paymentSessionId,
     cashfreeMode: order.cashfreeMode,
+    rejectionReason: order.rejectionReason,
     assignedKey: order.paymentStatus === 'SUCCESS' ? order.assignedKey : undefined
   };
 
+  const claimToken =
+    verification.verifiedSuccess && order.paymentStatus === 'SUCCESS'
+      ? issueOrderClaimToken(order.orderId, order.amount, order.currency || 'INR')
+      : undefined;
+
   return res.json({
     success: true,
+    verified: verification.verifiedSuccess,
+    status: verification.verifiedSuccess ? 'paid' : verification.verificationCategory.toLowerCase(),
     order_id: order.orderId,
-    order_status:
-      order.paymentStatus === 'SUCCESS'
-        ? 'PAID'
-        : order.paymentStatus === 'FAILED' || order.paymentStatus === 'CANCELLED'
-        ? 'FAILED'
-        : 'ACTIVE',
+    order_status: verification.cfOrderStatus,
     payment_status: order.paymentStatus,
+    verification_category: verification.verificationCategory,
+    message: verification.statusMessage,
+    claimToken,
     assignedKey: sanitizedOrder.assignedKey,
     order: sanitizedOrder
   });
@@ -2917,26 +3503,51 @@ app.get('/api/check-status', handleCheckOrderStatus);
 app.post('/api/payments/verify-status', async (req: Request, res: Response) => {
   const { orderId } = req.body || {};
   if (!orderId) {
-    return res.status(400).json({ success: false, message: 'Missing orderId' });
+    return res.status(400).json({
+      success: false,
+      verification_category: 'FAILED',
+      message: 'Missing orderId'
+    });
   }
   req.params.orderId = String(orderId);
   return handleCheckOrderStatus(req, res);
 });
 
-// Shared Webhook Callback for Cashfree (PAYMENT_SUCCESS_WEBHOOK) and TranzUPI
+// Verified Webhook Callback for Cashfree (with HMAC-SHA256 signature validation)
 function handlePaymentWebhook(req: Request, res: Response) {
-  const body = req.body || {};
+  const cf = resolveCashfreeConfig();
+  const signature = req.headers['x-webhook-signature'] as string | undefined;
+  const timestamp = req.headers['x-webhook-timestamp'] as string | undefined;
+  const rawBody = (req as any).rawBody as string | undefined;
 
-  // Support Cashfree PAYMENT_SUCCESS_WEBHOOK nested format as well as flat format
+  // Enforce Cashfree webhook signature verification
+  if (!cf.secretKey || !signature || !timestamp || !rawBody) {
+    return res.status(401).json({
+      success: false,
+      message: 'Unauthorized webhook: Missing Cashfree signature headers or secret key.'
+    });
+  }
+
+  const expectedSignature = crypto
+    .createHmac('sha256', cf.secretKey)
+    .update(timestamp + rawBody)
+    .digest('base64');
+
+  const sigBuf = Buffer.from(signature);
+  const expBuf = Buffer.from(expectedSignature);
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+    return res.status(401).json({
+      success: false,
+      message: 'Unauthorized webhook: Invalid Cashfree webhook signature.'
+    });
+  }
+
+  const body = req.body || {};
   const cfOrder = body?.data?.order;
   const cfPayment = body?.data?.payment;
   const webhookType = String(body?.type || '').toUpperCase();
 
-  const targetId =
-    cfOrder?.order_id ||
-    body.order_id ||
-    body.orderId;
-
+  const targetId = cfOrder?.order_id || body.order_id || body.orderId;
   const rawStatus = String(
     cfPayment?.payment_status ||
       body.payment_status ||
@@ -2944,7 +3555,10 @@ function handlePaymentWebhook(req: Request, res: Response) {
       (webhookType === 'PAYMENT_SUCCESS_WEBHOOK' ? 'SUCCESS' : '')
   ).toUpperCase();
 
-  const webhookAmount = cfOrder?.order_amount ?? body.amount;
+  const webhookAmount = cfOrder?.order_amount ?? cfPayment?.payment_amount ?? body.amount;
+  const webhookCurrency = String(
+    cfOrder?.order_currency || cfPayment?.payment_currency || 'INR'
+  ).toUpperCase();
 
   if (!targetId) {
     return res.status(400).json({ success: false, message: 'Invalid webhook payload: missing order_id' });
@@ -2958,26 +3572,38 @@ function handlePaymentWebhook(req: Request, res: Response) {
   }
 
   if (['SUCCESS', 'PAID', 'COMPLETED'].includes(rawStatus)) {
-    if (webhookAmount !== undefined && Number(webhookAmount) !== Number(order.amount)) {
-      console.warn(`Webhook amount mismatch for ${order.orderId}: expected ${order.amount}, got ${webhookAmount}`);
-      return res.status(400).json({ success: false, message: 'Amount mismatch' });
+    if (
+      webhookAmount === undefined ||
+      Math.abs(Number(webhookAmount) - Number(order.amount)) > 0.01 ||
+      webhookCurrency !== String(order.currency || 'INR').toUpperCase()
+    ) {
+      console.warn(
+        `Webhook amount/currency mismatch for ${order.orderId}: expected ${order.amount} ${order.currency}, got ${webhookAmount} ${webhookCurrency}`
+      );
+      return res.status(400).json({ success: false, message: 'Amount or currency mismatch' });
     }
 
+    const wasAlreadyAssigned = Boolean(order.assignedKey);
     order.paymentStatus = 'SUCCESS';
     if (cfPayment?.payment_completion_time) {
       order.paidAt = cfPayment.payment_completion_time;
     }
+    if (cfPayment?.cf_payment_id) {
+      order.paymentId = String(cfPayment.cf_payment_id);
+    }
     assignKeyToOrder(order);
     saveSales(sales, order);
 
-    recordAdminLog({
-      action: 'KEY_GENERATED',
-      label: 'Cashfree / UPI Webhook Payment Verified',
-      customerName: order.customerName || 'Website Customer',
-      maskedKey: maskKeyForAudit(order.assignedKey || '', false),
-      keyId: order.assignedKeyId || order.assignedKey || '',
-      details: `Webhook ${webhookType || 'PAYMENT_SUCCESS'} for ${order.orderId} (₹${order.amount})`
-    });
+    if (!wasAlreadyAssigned) {
+      recordAdminLog({
+        action: 'KEY_GENERATED',
+        label: 'Cashfree Webhook Payment Verified',
+        customerName: order.customerName || 'Website Customer',
+        maskedKey: maskKeyForAudit(order.assignedKey || '', false),
+        keyId: order.assignedKeyId || order.assignedKey || '',
+        details: `Webhook ${webhookType || 'PAYMENT_SUCCESS'} for ${order.orderId} (₹${order.amount})`
+      });
+    }
 
     return res.json({
       success: true,
@@ -2985,10 +3611,20 @@ function handlePaymentWebhook(req: Request, res: Response) {
       assignedKey: order.assignedKey,
       message: 'Payment verified and key assigned'
     });
-  } else if (['FAILED', 'CANCELLED', 'USER_DROPPED'].includes(rawStatus)) {
-    order.paymentStatus = rawStatus === 'CANCELLED' ? 'CANCELLED' : 'FAILED';
-    saveSales(sales, order);
-    return res.json({ success: true, message: 'Order status updated' });
+  } else if (['USER_DROPPED', 'CANCELLED'].includes(rawStatus)) {
+    if (order.paymentStatus !== 'SUCCESS') {
+      order.paymentStatus = 'CANCELLED';
+      order.rejectionReason = cfPayment?.payment_message || 'Payment cancelled by user.';
+      saveSales(sales, order);
+    }
+    return res.json({ success: true, message: 'Order status updated to CANCELLED' });
+  } else if (['FAILED'].includes(rawStatus)) {
+    if (order.paymentStatus !== 'SUCCESS') {
+      order.paymentStatus = 'FAILED';
+      order.rejectionReason = cfPayment?.payment_message || 'Payment transaction failed.';
+      saveSales(sales, order);
+    }
+    return res.json({ success: true, message: 'Order status updated to FAILED' });
   }
 
   return res.json({ success: true, message: 'Webhook received' });

@@ -14,12 +14,20 @@ import { AdminPanel } from './components/AdminPanel';
 import { GetKeyModal } from './components/GetKeyModal';
 import { GetKeyChoiceModal } from './components/GetKeyChoiceModal';
 import { BuyKeyPage } from './components/BuyKeyPage';
+import { CheckoutPage } from './components/CheckoutPage';
+import {
+  KeySuccessPage,
+  VERIFIED_PURCHASE_SESSION_KEY,
+  VerifiedPurchaseSession
+} from './components/KeySuccessPage';
 import { IntroVideoScreen } from './components/IntroVideoScreen';
+import { resolveConfiguredKeyPlans, isPlanFullyConfigured } from './config/purchaseConfig';
 import { db, testConnection } from './firebase';
 import { doc, getDoc, onSnapshot, collection, query, where, getDocs } from 'firebase/firestore';
 import { getOrCreateDeviceId } from './deviceId';
 
 const CACHED_SETTINGS_STORAGE_KEY = 'rvx_published_settings_v3';
+const SELECTED_PLAN_STORAGE_KEY = 'rvx_selected_plan_id';
 
 export default function App() {
   const [lang, setLang] = useState<Language>('EN');
@@ -54,7 +62,7 @@ export default function App() {
         }
       }
     } catch {}
-    return false;
+    return true;
   });
   const [manualGameplayView, setManualGameplayView] = useState<boolean>(false);
 
@@ -68,6 +76,51 @@ export default function App() {
       return p === '/buy-key' || p === '/buy-key/';
     } catch {
       return false;
+    }
+  });
+  const [isCheckoutRoute, setIsCheckoutRoute] = useState<boolean>(() => {
+    try {
+      const p = window.location.pathname.toLowerCase();
+      const params = new URLSearchParams(window.location.search);
+      return p === '/checkout' || p === '/checkout/' || Boolean(params.get('order_id'));
+    } catch {
+      return false;
+    }
+  });
+  const [isKeySuccessRoute, setIsKeySuccessRoute] = useState<boolean>(() => {
+    try {
+      const p = window.location.pathname.toLowerCase();
+      return p === '/key-success' || p === '/key-success/';
+    } catch {
+      return false;
+    }
+  });
+  const [verifiedPurchaseSession, setVerifiedPurchaseSession] =
+    useState<VerifiedPurchaseSession | null>(() => {
+      try {
+        const raw = sessionStorage.getItem(VERIFIED_PURCHASE_SESSION_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as VerifiedPurchaseSession;
+          if (parsed && parsed.orderId && parsed.claimToken) {
+            return parsed;
+          }
+        }
+      } catch {}
+      return null;
+    });
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(() => {
+    try {
+      return sessionStorage.getItem(SELECTED_PLAN_STORAGE_KEY) || null;
+    } catch {
+      return null;
+    }
+  });
+  const [checkoutOrderId, setCheckoutOrderId] = useState<string | null>(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('order_id') || null;
+    } catch {
+      return null;
     }
   });
   const [purchasedKey, setPurchasedKey] = useState<string>('');
@@ -612,16 +665,42 @@ export default function App() {
   };
 
   // Browser Back button handler:
-  // - Syncs /buy-key route state
+  // - Syncs /buy-key and /checkout route states
   // - If user has NOT unlocked a key and presses Back on Key Entry screen, return to Gameplay screen!
   // - If user HAS unlocked a key and opened manual Gameplay view, pressing Back returns to Unlocked Dashboard!
   useEffect(() => {
     const handlePopState = () => {
       const path = window.location.pathname.toLowerCase();
+      const params = new URLSearchParams(window.location.search);
+      const urlOrderId = params.get('order_id');
+
+      if (path === '/key-success' || path === '/key-success/') {
+        setCheckoutOrderId(null);
+        setIsKeySuccessRoute(true);
+        setIsCheckoutRoute(false);
+        setIsBuyKeyRoute(false);
+        return;
+      }
+
+      if (path === '/checkout' || path === '/checkout/' || Boolean(urlOrderId)) {
+        setCheckoutOrderId(urlOrderId || null);
+        setIsKeySuccessRoute(false);
+        setIsCheckoutRoute(true);
+        setIsBuyKeyRoute(false);
+        return;
+      }
+
       if (path === '/buy-key' || path === '/buy-key/') {
+        setCheckoutOrderId(null);
+        setIsKeySuccessRoute(false);
+        setIsCheckoutRoute(false);
         setIsBuyKeyRoute(true);
         return;
       }
+
+      setCheckoutOrderId(null);
+      setIsKeySuccessRoute(false);
+      setIsCheckoutRoute(false);
       setIsBuyKeyRoute(false);
 
       if (unlockedKeyData) {
@@ -639,31 +718,47 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [unlockedKeyData]);
 
+  const availablePlans = resolveConfiguredKeyPlans(activeSettings).filter(
+    p => p.available && isPlanFullyConfigured(p)
+  );
+  const selectedPlan =
+    availablePlans.find(p => p.id === selectedPlanId) ||
+    (availablePlans.length > 0 ? availablePlans[0] : null);
+
   const showIntroVideoGate =
     !isBuyKeyRoute &&
+    !isCheckoutRoute &&
+    !isKeySuccessRoute &&
     (manualGameplayView ||
       (!unlockedKeyData &&
         !hasPassedIntro &&
         activeSettings.introVideoEnabled !== false));
 
-  if (isBuyKeyRoute) {
+  if (isKeySuccessRoute) {
     return (
       <>
-        <BuyKeyPage
+        <KeySuccessPage
           settings={activeSettings}
-          onBack={() => {
+          verifiedSession={verifiedPurchaseSession}
+          onBackToPlans={() => {
             try {
-              window.history.pushState({ rvxView: 'key-entry' }, '', '/');
+              window.history.pushState({ rvxView: 'buy-key' }, '', '/buy-key');
             } catch {}
-            setIsBuyKeyRoute(false);
-            setHasPassedIntro(true);
-            setManualGameplayView(false);
+            setCheckoutOrderId(null);
+            setIsKeySuccessRoute(false);
+            setIsCheckoutRoute(false);
+            setIsBuyKeyRoute(true);
           }}
-          onContinueWithKey={(verifiedKey) => {
-            setPurchasedKey(verifiedKey);
+          onOpenRevoxPanel={(accessKey) => {
+            if (accessKey) {
+              setPurchasedKey(accessKey);
+            }
             try {
               window.history.pushState({ rvxView: 'key-entry' }, '', '/');
             } catch {}
+            setCheckoutOrderId(null);
+            setIsKeySuccessRoute(false);
+            setIsCheckoutRoute(false);
             setIsBuyKeyRoute(false);
             setHasPassedIntro(true);
             setManualGameplayView(false);
@@ -684,13 +779,104 @@ export default function App() {
     );
   }
 
+  if (isCheckoutRoute) {
+    return (
+      <>
+        <CheckoutPage
+          settings={activeSettings}
+          selectedPlan={selectedPlan}
+          initialOrderId={checkoutOrderId}
+          onBackToPlans={() => {
+            try {
+              window.history.pushState({ rvxView: 'buy-key' }, '', '/buy-key');
+            } catch {}
+            setCheckoutOrderId(null);
+            setIsKeySuccessRoute(false);
+            setIsCheckoutRoute(false);
+            setIsBuyKeyRoute(true);
+          }}
+          onNavigateToKeySuccess={(session) => {
+            setVerifiedPurchaseSession(session);
+            try {
+              sessionStorage.setItem(
+                VERIFIED_PURCHASE_SESSION_KEY,
+                JSON.stringify(session)
+              );
+              window.history.pushState(
+                { rvxView: 'key-success', orderId: session.orderId },
+                '',
+                '/key-success'
+              );
+            } catch {}
+            setCheckoutOrderId(null);
+            setIsCheckoutRoute(false);
+            setIsBuyKeyRoute(false);
+            setIsKeySuccessRoute(true);
+          }}
+        />
+        {adminOpen && (
+          <AdminPanel
+            currentSettings={activeSettings}
+            initialAuthorized={adminPreAuthorized}
+            onUpdateSettings={(updated) => applyAuthoritativeSettings(updated, true)}
+            onClose={() => {
+              setAdminOpen(false);
+              setAdminPreAuthorized(false);
+            }}
+          />
+        )}
+      </>
+    );
+  }
+
+  if (isBuyKeyRoute) {
+    return (
+      <>
+        <BuyKeyPage
+          settings={activeSettings}
+          selectedPlanId={selectedPlan?.id || null}
+          onBack={() => {
+            try {
+              window.history.pushState({ rvxView: 'key-entry' }, '', '/');
+            } catch {}
+            setIsBuyKeyRoute(false);
+            setIsCheckoutRoute(false);
+            setHasPassedIntro(true);
+            setManualGameplayView(false);
+          }}
+          onSelectPlan={(plan) => {
+            setSelectedPlanId(plan.id);
+            try {
+              sessionStorage.setItem(SELECTED_PLAN_STORAGE_KEY, plan.id);
+              window.history.pushState({ rvxView: 'checkout', planId: plan.id }, '', '/checkout');
+            } catch {}
+            setCheckoutOrderId(null);
+            setIsBuyKeyRoute(false);
+            setIsCheckoutRoute(true);
+          }}
+        />
+        {adminOpen && (
+          <AdminPanel
+            currentSettings={activeSettings}
+            initialAuthorized={adminPreAuthorized}
+            onUpdateSettings={(updated) => applyAuthoritativeSettings(updated, true)}
+            onClose={() => {
+              setAdminOpen(false);
+              setAdminPreAuthorized(false);
+            }}
+          />
+        )}
+      </>
+    );
+  }
+
   return (
-    <div className="relative h-screen h-[100dvh] max-h-[100dvh] w-full bg-[#070B12] text-[#F4F7FB] flex flex-col justify-between overflow-hidden overscroll-none select-none">
+    <div className="relative h-[100dvh] max-h-[100dvh] w-full bg-[#070B12] text-[#F4F7FB] flex flex-col justify-between overflow-hidden select-none">
       {/* Smooth, clean dark background depth without scanlines or dark muddy vignette */}
       <div className="fixed inset-0 vignette-radial z-0 pointer-events-none" />
 
       {/* Top Header Bar: Language Selector on Left + Gameplay Button on Right */}
-      <header className="relative z-20 revox-shell pt-2.5 pb-1 flex items-center justify-between gap-2 shrink-0">
+      <header className="relative z-20 revox-shell pt-2 pb-1 flex items-center justify-between gap-2 shrink-0">
         {/* Left: Language Button */}
         <LanguageSelector currentLang={lang} onLanguageChange={setLang} />
 
@@ -706,7 +892,7 @@ export default function App() {
               setManualGameplayView(true);
             }}
             title="Watch Panel Gameplay Video"
-            className="relative overflow-hidden bg-[#101B28] hover:bg-[#152334] active:scale-95 border border-[#1B3345] hover:border-[#00CFE8] text-[#F4F7FB] text-xs font-bold tracking-wider px-3.5 py-1.5 rounded-[4px] flex items-center gap-1.5 cursor-pointer transition-all shadow-[0_3px_11px_rgba(0,0,0,0.48),inset_0_1px_0_rgba(244,247,251,0.1)] hover:shadow-[0_0_13px_rgba(0,207,232,0.22)] font-tech uppercase shrink-0"
+            className="relative overflow-hidden bg-[#101B28] hover:bg-[#152334] active:scale-95 border border-[#1B3345] hover:border-[#00CFE8] text-[#F4F7FB] text-xs font-bold tracking-wider px-3 py-1 rounded-[4px] flex items-center gap-1.5 cursor-pointer transition-all shadow-[0_3px_11px_rgba(0,0,0,0.48),inset_0_1px_0_rgba(244,247,251,0.1)] hover:shadow-[0_0_13px_rgba(0,207,232,0.22)] font-tech uppercase shrink-0"
           >
             <span className="absolute top-0 left-2 right-2 h-[1px] bg-gradient-to-r from-transparent via-[#00CFE8]/48 to-transparent pointer-events-none" />
             <span>🎬</span>
@@ -715,33 +901,33 @@ export default function App() {
         )}
       </header>
 
-      {/* Main Viewport Container — Strictly non-scrolling on Gameplay & Home pages */}
-      <main className="relative z-10 revox-shell pt-0.5 pb-2.5 flex-1 min-h-0 flex flex-col overflow-hidden">
+      {/* Main Viewport Container — Perfectly fitted in 100dvh viewport matching revoxpanel.site */}
+      <main className="relative z-10 revox-shell pt-0.5 pb-2 flex-1 flex flex-col justify-between min-h-0">
         {initialLoading && !settings ? (
           /* Clean Dark Gaming Loading Skeleton */
-          <div className="w-full h-full max-h-[760px] my-auto flex flex-col justify-between py-1 animate-pulse overflow-hidden">
-            <div className="h-40 w-full bg-[#101B28] border border-[#1B3345] rounded-[4px] p-4 flex flex-col justify-between shrink-0">
-              <div className="h-4 w-1/3 bg-[#152334] rounded" />
-              <div className="h-6 w-2/3 bg-[#152334] rounded" />
-              <div className="space-y-2">
-                <div className="h-3 w-full bg-[#0A111B] rounded" />
-                <div className="h-3 w-5/6 bg-[#0A111B] rounded" />
-                <div className="h-3 w-4/6 bg-[#0A111B] rounded" />
+          <div className="w-full flex flex-col gap-2.5 py-1 animate-pulse">
+            <div className="h-36 w-full bg-[#101B28] border border-[#1B3345] rounded-[4px] p-3.5 flex flex-col justify-between">
+              <div className="h-3.5 w-1/3 bg-[#152334] rounded" />
+              <div className="h-5 w-2/3 bg-[#152334] rounded" />
+              <div className="space-y-1.5">
+                <div className="h-2.5 w-full bg-[#0A111B] rounded" />
+                <div className="h-2.5 w-5/6 bg-[#0A111B] rounded" />
+                <div className="h-2.5 w-4/6 bg-[#0A111B] rounded" />
               </div>
-              <div className="h-8 w-full bg-[#152334] rounded" />
+              <div className="h-7 w-full bg-[#152334] rounded" />
             </div>
 
-            <div className="flex-1 min-h-0 flex items-center justify-center my-1">
+            <div className="h-36 flex items-center justify-center">
               <div className="w-24 h-24 rounded-full bg-[#101B28] border border-[#1B3345]" />
             </div>
 
-            <div className="space-y-2 shrink-0">
-              <div className="h-10 w-full bg-[#0A111B] border border-[#1B3345] rounded" />
-              <div className="h-11 w-full bg-[#168BFF]/30 rounded" />
+            <div className="space-y-2">
+              <div className="h-9 w-full bg-[#0A111B] border border-[#1B3345] rounded" />
+              <div className="h-10 w-full bg-[#168BFF]/30 rounded" />
             </div>
           </div>
         ) : showIntroVideoGate ? (
-          <div key="page-gameplay" className="w-full h-full flex-1 min-h-0 flex flex-col overflow-hidden animate-page-fade">
+          <div key="page-gameplay" className="w-full flex-1 flex flex-col justify-between animate-page-fade overflow-y-auto">
             <IntroVideoScreen
               settings={activeSettings}
               lang={lang}
@@ -757,7 +943,7 @@ export default function App() {
             />
           </div>
         ) : unlockedKeyData ? (
-          <div key="page-dashboard" className="w-full h-full flex-1 min-h-0 flex flex-col justify-start pt-2 pb-2 overflow-hidden animate-page-fade">
+          <div key="page-dashboard" className="w-full flex-1 flex flex-col justify-start pt-1.5 pb-4 animate-page-fade overflow-y-auto">
             <AuthorizedDashboard
               keyData={unlockedKeyData}
               lang={lang}
@@ -786,7 +972,7 @@ export default function App() {
         ) : (
           <div
             key="page-home"
-            className="w-full h-full max-h-[760px] my-auto flex-1 min-h-0 flex flex-col justify-between gap-1.5 py-0.5 overflow-hidden animate-page-fade"
+            className="w-full flex-1 flex flex-col justify-between py-0.5 animate-page-fade min-h-0"
           >
             {/* 1. Announcement Card (with GET KEY INSTANTLY button inside) */}
             <AnnouncementCard
@@ -795,8 +981,8 @@ export default function App() {
               onOpenGetKeyChoice={() => setShowGetKeyChoiceModal(true)}
             />
 
-            {/* 2. Dynamic Center Logo (Flexible height between card & form so page never scrolls) */}
-            <div onClick={handleLogoSecretClick} className="cursor-default w-full flex-1 min-h-0 flex items-center justify-center overflow-hidden">
+            {/* 2. Compact Center Logo */}
+            <div onClick={handleLogoSecretClick} className="cursor-default w-full flex items-center justify-center">
               <CenterLogo settings={activeSettings} />
             </div>
 
@@ -832,6 +1018,8 @@ export default function App() {
           try {
             window.history.pushState({ rvxView: 'buy-key' }, '', '/buy-key');
           } catch {}
+          setCheckoutOrderId(null);
+          setIsCheckoutRoute(false);
           setIsBuyKeyRoute(true);
         }}
       />

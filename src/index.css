@@ -25,59 +25,16 @@
     box-sizing: border-box;
   }
 
-  html {
+  html, body {
     background-color: #070B12;
     color: #F4F7FB;
-    -webkit-text-size-adjust: 100%;
-    text-size-adjust: 100%;
-    height: 100%;
-    height: 100dvh;
-    width: 100%;
-    overflow: hidden;
-    overscroll-behavior: none;
-  }
-
-  body {
-    background-color: #070B12;
-    color: #F4F7FB;
-    font-family: 'Rajdhani', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    line-height: 1.38;
+    font-family: 'Rajdhani', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     margin: 0;
     padding: 0;
-    height: 100%;
-    height: 100dvh;
-    max-height: 100dvh;
+    min-height: 100%;
     width: 100%;
-    overflow: hidden;
-    overscroll-behavior: none;
-    user-select: none;
+    overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
-
-  #root {
-    height: 100%;
-    height: 100dvh;
-    max-height: 100dvh;
-    width: 100%;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-  }
-
-  button,
-  input,
-  select,
-  textarea {
-    font-family: inherit;
-    margin: 0;
-  }
-
-  img,
-  video,
-  svg {
-    max-width: 100%;
-    display: block;
   }
 
   button:focus-visible,
@@ -86,16 +43,6 @@
     outline: 2px solid #00CFE8;
     outline-offset: 2px;
   }
-}
-
-/* Responsive Shell Container for 320px - 480px Mobile & Tablet/Desktop */
-.revox-shell {
-  width: 100%;
-  max-width: 420px;
-  margin-left: auto;
-  margin-right: auto;
-  padding-left: clamp(12px, 3.8vw, 18px);
-  padding-right: clamp(12px, 3.8vw, 18px);
 }
 
 /* Scanlines removed to ensure a smooth, stripe-free background on mobile and desktop */
@@ -110,7 +57,16 @@
   background:
     radial-gradient(ellipse 85% 42% at 50% 0%, rgba(0, 207, 232, 0.065) 0%, rgba(22, 139, 255, 0.025) 52%, transparent 80%),
     linear-gradient(180deg, #0A111B 0%, #070B12 48%, #0A111B 100%);
-  pointer-events: none;
+}
+
+/* Mobile Viewport Container Framing (matches revoxpanel.site exact layout) */
+.revox-shell {
+  width: 100%;
+  max-width: 390px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 14px;
+  padding-right: 14px;
 }
 
 /* Clean Card Surface (#101B28 -> #0D1622) with balanced contrast */
@@ -260,17 +216,17 @@
     inset 0 1px 1.5px rgba(255, 255, 255, 0.6);
 }
 
-/* Tech Font Families with Cross-Device System Fallbacks */
+/* Tech Font Families */
 .font-tech {
-  font-family: 'Chakra Petch', 'Rajdhani', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: 'Chakra Petch', 'Rajdhani', sans-serif;
 }
 
 .font-rajdhani {
-  font-family: 'Rajdhani', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: 'Rajdhani', sans-serif;
 }
 
 .font-mono-code {
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family: 'JetBrains Mono', monospace;
 }
 
 /* -----------------------------------------------------
@@ -514,7 +470,17 @@
 }
 
 .clip-continue-br {
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 13px), calc(100% - 13px) 100%, 0 100%);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%);
+}
+
+.clip-card-br {
+  clip-path: polygon(
+    0% 0%,
+    100% 0%,
+    100% calc(100% - 16px),
+    calc(100% - 16px) 100%,
+    0% 100%
+  );
 }
 
 @keyframes gpHeroFadeIn {

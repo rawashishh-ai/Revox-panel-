@@ -63,7 +63,7 @@ export const AnnouncementCard: React.FC<AnnouncementCardProps> = ({
         className="relative p-[1px] bg-gradient-to-br from-[#00CFE8]/60 via-[#1B3345] to-[#168BFF]/45 hover:from-[#00CFE8]/85 hover:via-[#00CFE8]/55 hover:to-[#168BFF]/80 clip-announcement transition-all duration-300 shadow-[0_11px_27px_-10px_rgba(0,0,0,0.72),0_0_16px_rgba(0,207,232,0.11)]"
       >
         {/* Inner Card Surface (#101B28 -> #0D1622) */}
-        <div className="relative cyber-glass-card backdrop-blur-xl p-3 min-[360px]:p-3.5 sm:p-4 clip-announcement overflow-hidden">
+        <div className="relative cyber-glass-card backdrop-blur-xl p-2.5 min-[360px]:p-3 sm:p-3.5 clip-announcement overflow-hidden">
           {/* Top Specular Highlight Line */}
           <span className="absolute top-0 left-6 right-6 h-[1px] bg-gradient-to-r from-transparent via-[#00CFE8]/65 to-transparent pointer-events-none" />
 
@@ -77,17 +77,17 @@ export const AnnouncementCard: React.FC<AnnouncementCardProps> = ({
           />
 
           {/* Small top kicker */}
-          <div className="relative z-10 flex items-center gap-1.5 text-[#00CFE8] text-[10px] sm:text-[11px] font-bold tracking-[0.2em] sm:tracking-[0.24em] uppercase mb-0.5 font-tech">
+          <div className="relative z-10 flex items-center gap-1.5 text-[#00CFE8] text-[9.5px] sm:text-[10.5px] font-bold tracking-[0.2em] uppercase mb-0.5 font-tech">
             <span className="w-1.5 h-1.5 rounded-full bg-[#00CFE8] shadow-[0_0_6px_rgba(0,207,232,0.8)] shrink-0" />
             <span className="truncate">{lang === 'HI' ? t.moving : settings.announcementTitle || "WE'RE MOVING"}</span>
           </div>
 
           {/* Brand transition headline */}
-          <div className="relative z-10 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[clamp(18px,5.2vw,24px)] leading-tight font-black tracking-tight mb-2 font-tech min-w-0">
+          <div className="relative z-10 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[clamp(17px,4.8vw,22px)] leading-tight font-black tracking-tight mb-1.5 font-tech min-w-0">
             <span className="bg-gradient-to-b from-[#F4F7FB] via-[#00CFE8] to-[#168BFF] bg-clip-text text-transparent uppercase drop-shadow-[0_0_9px_rgba(0,207,232,0.28)]">
               {(!settings.announcementFrom || settings.announcementFrom === 'SILENTX') ? 'ANTIBAN' : settings.announcementFrom}
             </span>
-            <span className="text-[#00CFE8] font-bold text-base sm:text-xl shrink-0">
+            <span className="text-[#00CFE8] font-bold text-base sm:text-lg shrink-0">
               →
             </span>
             <span className="text-[#F4F7FB] uppercase tracking-wide drop-shadow-[0_2px_8px_rgba(0,207,232,0.18)]">
@@ -104,13 +104,13 @@ export const AnnouncementCard: React.FC<AnnouncementCardProps> = ({
             if (!lines || lines.length === 0) return null;
 
             return (
-              <div className="relative z-10 space-y-1 mb-2.5 font-sans">
+              <div className="relative z-10 space-y-0.5 mb-2 font-sans">
                 {lines.map((line, idx) => (
                   <div 
                     key={idx} 
-                    className="flex items-start gap-2 text-[11px] sm:text-xs leading-snug text-[#A7B5C5] min-w-0"
+                    className="flex items-start gap-1.5 text-[10.5px] sm:text-[11.5px] leading-snug text-[#A7B5C5] min-w-0"
                   >
-                    <span className="text-[#00CFE8] font-tech text-xs mt-[1px] select-none shrink-0">▸</span>
+                    <span className="text-[#00CFE8] font-tech text-[11px] mt-[1px] select-none shrink-0">▸</span>
                     <span className="flex-1 min-w-0 break-words text-[#A7B5C5] font-medium">{line}</span>
                   </div>
                 ))}
@@ -121,7 +121,7 @@ export const AnnouncementCard: React.FC<AnnouncementCardProps> = ({
           {/* ==============================================================
               SHINING "GET KEY INSTANTLY" BUTTON (MULTI-BEAM SHINE, -20% GLOW)
              ============================================================== */}
-          <div className="relative z-10 group/btn mt-2 w-full">
+          <div className="relative z-10 group/btn mt-1.5 w-full">
             {/* Controlled Cyan + White Halo Aura Behind Button (reduced by ~20%) */}
             <div className="absolute -inset-[1.5px] bg-gradient-to-r from-[#00CFE8]/60 via-[#F4F7FB]/68 to-[#168BFF]/60 rounded-[5px] blur-[6px] opacity-68 group-hover/btn:opacity-85 group-hover/btn:blur-[8px] transition-all duration-200 pointer-events-none" />
 
@@ -130,7 +130,7 @@ export const AnnouncementCard: React.FC<AnnouncementCardProps> = ({
               <button
                 onClick={handleGetKeyButtonClick}
                 type="button"
-                className="relative w-full bg-gradient-to-r from-[#0D1622] via-[#132945] to-[#0D1622] hover:from-[#101E30] hover:via-[#173355] hover:to-[#101E30] py-2 sm:py-2.5 px-2.5 min-[360px]:px-3 sm:px-3.5 flex items-center justify-between gap-1.5 min-[360px]:gap-2 clip-whatsapp-btn cursor-pointer transition-all duration-150 overflow-hidden shadow-[inset_0_1px_1.5px_rgba(244,247,251,0.52),inset_0_-1px_1.5px_rgba(0,207,232,0.36),inset_0_0_17px_rgba(0,207,232,0.22)]"
+                className="relative w-full bg-gradient-to-r from-[#0D1622] via-[#132945] to-[#0D1622] hover:from-[#101E30] hover:via-[#173355] hover:to-[#101E30] py-1.5 sm:py-2 px-2.5 min-[360px]:px-3 flex items-center justify-between gap-1.5 min-[360px]:gap-2 clip-whatsapp-btn cursor-pointer transition-all duration-150 overflow-hidden shadow-[inset_0_1px_1.5px_rgba(244,247,251,0.52),inset_0_-1px_1.5px_rgba(0,207,232,0.36),inset_0_0_17px_rgba(0,207,232,0.22)]"
               >
                 {/* Top Half High-Gloss Chrome Bevel */}
                 <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/[0.13] via-[#00CFE8]/[0.05] to-transparent pointer-events-none" />

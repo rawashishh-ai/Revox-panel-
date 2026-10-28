@@ -124,6 +124,9 @@ export interface PaymentOrder {
   tranzupiRef?: string;
   paymentSessionId?: string;
   cashfreeMode?: 'production' | 'sandbox';
+  cashfreeQrCode?: string;
+  expiresAt?: string;
+  rejectionReason?: string;
 }
 
 export interface PaymentStats {
