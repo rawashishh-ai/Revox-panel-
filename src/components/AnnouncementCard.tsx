@@ -25,7 +25,7 @@ export const AnnouncementCard: React.FC<AnnouncementCardProps> = ({
 
   const handleWhatsAppClick = () => {
     const prefillMessage =
-      "👋 Hello REVOX PANEL!\n\n🔐 I want to buy an Access Key.\n💎 Please share the price and payment details.\n\n⚡ REVOX PANEL — POWER BEYOND LIMITS!";
+      '👋 Hello REVOX PANEL!\n\n🔐 I want to buy an Access Key.\n\n💎 KEY PRICES ?';
     const encodedMsg = encodeURIComponent(prefillMessage);
 
     let raw = (settings.whatsappUrl || 'https://wa.me/919623508876').trim();

@@ -13,7 +13,7 @@ import { PurchasePlan, SiteSettings, GetKeyPurchaseMode } from '../types';
 export const OWNER_WHATSAPP_NUMBER_OR_URL: string = 'https://wa.me/9623508876';
 
 export const WHATSAPP_PURCHASE_MESSAGE =
-  '👋 Hello REVOX PANEL!\n\n🔐 I want to buy an Access Key.\n\n💎 KEY PRICES:\n💳 7 DAYS ➜ ₹99\n💳 12 DAYS ➜ ₹149\n💳 21 DAYS ➜ ₹249\n💳 30 DAYS ➜ ₹299\n💳 PERMANENT ➜ ₹499\n\nPlease share payment details!';
+  '👋 Hello REVOX PANEL!\n\n🔐 I want to buy an Access Key.\n\n💎 KEY PRICES ?';
 
 /**
  * Resolves the active "GET KEY" purchase mode configured in Admin Panel:
@@ -243,11 +243,20 @@ export function resolveWhatsAppPurchaseUrl(
   }
 
   if (raw.includes('whatsapp.com')) {
-    const separator = raw.includes('?') ? '&' : '?';
-    return {
-      configured: true,
-      url: raw.includes('text=') ? raw : `${raw}${separator}text=${encodedMsg}`
-    };
+    try {
+      const parsedUrl = new URL(raw);
+      parsedUrl.searchParams.set('text', customMessage);
+      return {
+        configured: true,
+        url: parsedUrl.toString()
+      };
+    } catch {
+      const separator = raw.includes('?') ? '&' : '?';
+      return {
+        configured: true,
+        url: `${raw}${separator}text=${encodedMsg}`
+      };
+    }
   }
 
   const separator = raw.includes('?') ? '&' : '?';

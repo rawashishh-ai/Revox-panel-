@@ -63,31 +63,16 @@ export default function App() {
   const [adminPreAuthorized, setAdminPreAuthorized] = useState(false);
   const [showGetKeyModal, setShowGetKeyModal] = useState(false);
   const [showGetKeyChoiceModal, setShowGetKeyChoiceModal] = useState(false);
-  const [isBuyKeyRoute, setIsBuyKeyRoute] = useState<boolean>(() => {
-    try {
-      const p = window.location.pathname.toLowerCase();
-      return p === '/buy-key' || p === '/buy-key/';
-    } catch {
-      return false;
-    }
-  });
+  const [isBuyKeyRoute, setIsBuyKeyRoute] = useState<boolean>(false);
   const [isCheckoutRoute, setIsCheckoutRoute] = useState<boolean>(() => {
     try {
-      const p = window.location.pathname.toLowerCase();
       const params = new URLSearchParams(window.location.search);
-      return p === '/checkout' || p === '/checkout/' || Boolean(params.get('order_id'));
+      return Boolean(params.get('order_id'));
     } catch {
       return false;
     }
   });
-  const [isKeySuccessRoute, setIsKeySuccessRoute] = useState<boolean>(() => {
-    try {
-      const p = window.location.pathname.toLowerCase();
-      return p === '/key-success' || p === '/key-success/';
-    } catch {
-      return false;
-    }
-  });
+  const [isKeySuccessRoute, setIsKeySuccessRoute] = useState<boolean>(false);
   const [verifiedPurchaseSession, setVerifiedPurchaseSession] =
     useState<VerifiedPurchaseSession | null>(() => {
       try {
@@ -292,23 +277,41 @@ export default function App() {
     []
   );
 
-  // 1. Admin URL Detection & Connection Check
+  // 1. Admin URL Detection, Initial Route Reset to Gameplay & Connection Check
   useEffect(() => {
     testConnection();
 
     const params = new URLSearchParams(window.location.search);
     const path = window.location.pathname.toLowerCase();
     const hash = window.location.hash.toLowerCase();
-    if (
+    const isAdminUrl =
       params.get('admin') === 'true' ||
       params.get('admin') === '1' ||
       params.has('admin') ||
       path === '/admin' ||
       path === '/admin/' ||
-      hash === '#admin'
-    ) {
+      hash === '#admin';
+
+    if (isAdminUrl) {
       setHasPassedIntro(true);
       setAdminOpen(true);
+      return;
+    }
+
+    // Always start on the Gameplay page when opening or refreshing the website
+    if (!params.get('order_id')) {
+      setHasPassedIntro(false);
+      setManualGameplayView(false);
+      setIsBuyKeyRoute(false);
+      setIsCheckoutRoute(false);
+      setIsKeySuccessRoute(false);
+      try {
+        if (window.location.pathname !== '/') {
+          window.history.replaceState({ rvxView: 'gameplay' }, '', '/');
+        } else {
+          window.history.replaceState({ rvxView: 'gameplay' }, '');
+        }
+      } catch {}
     }
   }, []);
 
@@ -655,7 +658,7 @@ export default function App() {
     whatsappUrl: 'https://wa.me/1234567890',
     downloadHackUrl: 'https://t.me/silentx_phantom_official',
     setupVideoUrl: 'https://www.youtube.com/',
-    introVideoUrl: '',
+    introVideoUrl: '/uploads/gameplay_v12_1792903967616.mp4',
     introVideoEnabled: true,
     introVideoTitle: 'WITH PANEL GAMEPLAY',
     introVideoButtonText: 'CONTINUE',
@@ -917,7 +920,23 @@ export default function App() {
 
       {/* Main Viewport Container — Perfectly fitted in 100dvh viewport matching revoxpanel.site */}
       <main className="relative z-10 revox-shell pt-0.5 pb-2 flex-1 flex flex-col justify-between min-h-0">
-        {initialLoading && !settings ? (
+        {showIntroVideoGate ? (
+          <div key="page-gameplay" className="w-full flex-1 flex flex-col justify-between animate-page-fade overflow-y-auto">
+            <IntroVideoScreen
+              settings={activeSettings}
+              lang={lang}
+              onContinue={() => {
+                if (!unlockedKeyData) {
+                  try {
+                    window.history.pushState({ rvxView: 'key-entry' }, '');
+                  } catch {}
+                }
+                setHasPassedIntro(true);
+                setManualGameplayView(false);
+              }}
+            />
+          </div>
+        ) : initialLoading && !settings ? (
           /* Clean Dark Gaming Loading Skeleton */
           <div className="w-full flex flex-col gap-2.5 py-1 animate-pulse">
             <div className="h-36 w-full bg-[#101B28] border border-[#1B3345] rounded-[4px] p-3.5 flex flex-col justify-between">
@@ -939,22 +958,6 @@ export default function App() {
               <div className="h-9 w-full bg-[#0A111B] border border-[#1B3345] rounded" />
               <div className="h-10 w-full bg-[#168BFF]/30 rounded" />
             </div>
-          </div>
-        ) : showIntroVideoGate ? (
-          <div key="page-gameplay" className="w-full flex-1 flex flex-col justify-between animate-page-fade overflow-y-auto">
-            <IntroVideoScreen
-              settings={activeSettings}
-              lang={lang}
-              onContinue={() => {
-                if (!unlockedKeyData) {
-                  try {
-                    window.history.pushState({ rvxView: 'key-entry' }, '');
-                  } catch {}
-                }
-                setHasPassedIntro(true);
-                setManualGameplayView(false);
-              }}
-            />
           </div>
         ) : unlockedKeyData ? (
           <div key="page-dashboard" className="w-full flex-1 flex flex-col justify-start pt-1.5 pb-4 animate-page-fade overflow-y-auto">

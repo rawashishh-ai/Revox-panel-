@@ -3,7 +3,8 @@ import { SiteSettings, PurchasePlan } from '../types';
 import {
   resolveConfiguredKeyPlans,
   isPlanFullyConfigured,
-  resolveWhatsAppPurchaseUrl
+  resolveWhatsAppPurchaseUrl,
+  WHATSAPP_PURCHASE_MESSAGE
 } from '../config/purchaseConfig';
 
 interface BuyKeyPageProps {
@@ -106,10 +107,8 @@ export const BuyKeyPage: React.FC<BuyKeyPageProps> = ({
     return `${val} DAY${val === 1 ? '' : 'S'}`;
   };
 
-  const handleBuyPlanOnWhatsApp = (plan: PurchasePlan) => {
-    const tag = getShortPlanTag(plan);
-    const customMsg = `👋 Hello REVOX PANEL!\n\n🔐 I want to buy an Access Key:\n💎 Plan: ${tag} ➜ ₹${plan.priceINR}\n\nPlease share payment details!`;
-    const resolved = resolveWhatsAppPurchaseUrl(settings, customMsg);
+  const handleBuyPlanOnWhatsApp = (_plan: PurchasePlan) => {
+    const resolved = resolveWhatsAppPurchaseUrl(settings, WHATSAPP_PURCHASE_MESSAGE);
     window.open(resolved.url, '_blank', 'noopener,noreferrer');
   };
 
